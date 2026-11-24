@@ -12,8 +12,8 @@ use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    Clip, Project,
-    media::{Media, Packet, Stream, probe, read_packets},
+    Clip, MediaInfo, Project,
+    media::{Media, Packet, Stream, media_info, probe, read_packets},
     process,
     time::{TimeBase, ffmpeg_time},
 };
@@ -40,12 +40,73 @@ pub struct PlannedClip {
     pub audio_packets: Range<usize>,
 }
 
+pub struct IndexedSource {
+    media: Media,
+    frame_pts: Vec<i64>,
+}
+
+impl IndexedSource {
+    pub fn open(path: &Path, cancel: &AtomicBool) -> Result<Self> {
+        let media =
+            Media::open(path, cancel).with_context(|| format!("inspecting {}", path.display()))?;
+        let mut frame_pts: Vec<_> = media
+            .video_packets
+            .iter()
+            .filter_map(|packet| packet.pts)
+            .collect();
+        frame_pts.sort_unstable();
+        Ok(Self { media, frame_pts })
+    }
+
+    pub fn info(&self) -> Result<MediaInfo> {
+        media_info(&self.media)
+    }
+
+    pub fn plan_clip(&self, clip: &Clip) -> Result<PlannedClip> {
+        plan_clip(&self.media, clip, 0)
+    }
+
+    pub fn check_source(&self) -> Result<()> {
+        self.media.check_source()
+    }
+
+    pub fn frame_at(&self, clip: &Clip, source_seconds: f64) -> f64 {
+        let base = self.media.video_base;
+        let index = self
+            .frame_pts
+            .partition_point(|&pts| pts < clip.out_pts && base.seconds(pts) <= source_seconds);
+        let pts = index
+            .checked_sub(1)
+            .map(|index| self.frame_pts[index])
+            .unwrap_or(clip.in_pts);
+        base.seconds(pts.max(clip.in_pts))
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum ExportProgress {
+    Planning,
+    Copying { completed: usize, total: usize },
+    Joining,
+    Verifying,
+}
+
 pub fn plan(project: &Project, root: &Path, cancel: &AtomicBool) -> Result<ExportPlan> {
     let (plan, _) = prepare(project, root, cancel)?;
     Ok(plan)
 }
 
 pub fn export(project: &Project, root: &Path, output: &Path, cancel: &AtomicBool) -> Result<()> {
+    export_with_progress(project, root, output, cancel, |_| {})
+}
+
+pub fn export_with_progress(
+    project: &Project,
+    root: &Path,
+    output: &Path,
+    cancel: &AtomicBool,
+    mut progress: impl FnMut(ExportProgress),
+) -> Result<()> {
     ensure!(
         output
             .extension()
@@ -57,6 +118,7 @@ pub fn export(project: &Project, root: &Path, output: &Path, cancel: &AtomicBool
         "output already exists: {}",
         output.display()
     );
+    progress(ExportProgress::Planning);
     let (plan, sources) = prepare(project, root, cancel)?;
     let parent = output
         .parent()
@@ -71,6 +133,10 @@ pub fn export(project: &Project, root: &Path, output: &Path, cancel: &AtomicBool
     let mut manifest = File::create(directory.join("timeline.ffconcat"))?;
     writeln!(manifest, "ffconcat version 1.0")?;
     for (index, clip) in plan.clips.iter().enumerate() {
+        progress(ExportProgress::Copying {
+            completed: index,
+            total: plan.clips.len(),
+        });
         let name = format!("{index}.mkv");
         let media = &sources[&clip.source];
         media.check_source()?;
@@ -81,6 +147,7 @@ pub fn export(project: &Project, root: &Path, output: &Path, cancel: &AtomicBool
     }
     drop(manifest);
 
+    progress(ExportProgress::Joining);
     let staged_output = directory.join("output.mkv");
     let mut command = ffmpeg();
     command.current_dir(&directory).args([
@@ -101,6 +168,7 @@ pub fn export(project: &Project, root: &Path, output: &Path, cancel: &AtomicBool
     ]);
     mkv_output(&mut command, &staged_output);
     process::run(&mut command, None, cancel).context("joining copied clips")?;
+    progress(ExportProgress::Verifying);
     verify(&staged_output, &plan, &sources, cancel).context("verifying joined output")?;
     for source in sources.values() {
         source.check_source()?;

@@ -1,8 +1,26 @@
 # SpoolCut
 
-Cut and join video without re-encoding. The first prototype is a Linux command-line tool that exports an ordered sequence to a single MKV file.
+Cut and join video without re-encoding. SpoolCut has a GTK desktop editor and a command-line tool on Linux.
 
-## Build and export
+## Desktop editor
+
+Build with a current stable Rust toolchain, GTK 4.10 or newer, and libmpv from mpv 0.38 or newer. On recent Fedora releases, install the build dependencies and FFmpeg tools with:
+
+```sh
+sudo dnf install gcc cargo pkgconf-pkg-config gtk4-devel mpv-devel ffmpeg-free
+cargo run --release --locked --features desktop --bin spoolcut-desktop
+```
+
+libmpv needs H.264 and HEVC decoding support for preview. The FFmpeg build used for the tests also needs the libx264 and libx265 encoders.
+
+1. Import one or more MP4 or MOV files. Select a source and click **Add to timeline**.
+2. Select a clip to see its effective in and out points. Trim against the source's safe cut points, split at the safe point nearest the playhead, or move clips along the timeline.
+3. Scrub or play to preview the sequence. Save it as a JSON project, and use **Relink** if a source moves.
+4. Choose **Export MKV**. The status area shows progress through validation, copying, joining, and verification.
+
+The preview plays decoded source audio. Export keeps only complete AAC packets, so you may hear a short difference at joins with unaligned audio boundaries.
+
+## Command-line export
 
 Install a current stable Rust toolchain and put FFmpeg and ffprobe on your PATH. Then build and inspect each source.
 
@@ -46,3 +64,5 @@ Press Ctrl+C to cancel. SpoolCut checks the staged MKV before publishing it and 
 ## Tests
 
 `cargo test --locked` generates fixtures using FFmpeg with the `libx264`, `libx265`, and `aac` encoders. It checks decoded frame order, video and audio packet hashes, output duration, A/V timing, unsafe cuts, incompatible streams, and cancellation. The fixtures cover B-frames, fractional and variable frame timing, and different source time bases.
+
+With an OpenGL-capable graphical session, run the desktop smoke test with `cargo test --locked --features desktop --bin spoolcut-desktop -- --ignored`.

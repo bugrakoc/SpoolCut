@@ -4,6 +4,15 @@ version = "0.1.0"
 edition = "2024"
 license-file = "LICENSE"
 description = "Cut and join video without re-encoding"
+default-run = "spoolcut"
+
+[features]
+desktop = ["dep:gtk", "dep:libmpv2-sys", "dep:libloading", "dep:gl"]
+
+[[bin]]
+name = "spoolcut-desktop"
+path = "src/desktop/main.rs"
+required-features = ["desktop"]
 
 [dependencies]
 anyhow = "1"
@@ -11,3 +20,7 @@ ctrlc = "3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tempfile = "3"
+gtk = { package = "gtk4", version = "0.10", features = ["v4_10"], optional = true }
+libmpv2-sys = { version = "4", optional = true }
+libloading = { version = "0.8", optional = true }
+gl = { version = "0.14", optional = true }
