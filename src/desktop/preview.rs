@@ -50,6 +50,8 @@ impl Preview {
         };
         for (name, value) in [
             (c"vo", c"libmpv"),
+            // The default GPU scaling pipeline can lose a paused frame on software OpenGL.
+            (c"profile", c"fast"),
             (c"config", c"no"),
             (c"osc", c"no"),
             (c"load-scripts", c"no"),

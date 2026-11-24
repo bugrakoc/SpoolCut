@@ -50,15 +50,40 @@ fn fixture(path: &Path, color: &str, frequency: u32) {
 }
 
 fn preview_is_ready(app: &App, index: usize) -> bool {
-    app.state
-        .borrow()
-        .active
-        .as_ref()
-        .is_some_and(|active| active.index == index && active.ready)
+    let state = app.state.borrow();
+    state.pending.is_none()
+        && state
+            .active
+            .as_ref()
+            .is_some_and(|active| active.index == index && active.ready)
 }
 
-fn preview_center(app: &App) -> [u8; 4] {
-    app.preview.borrow().as_ref().unwrap().last_pixel.get()
+fn wait_for_paused_frame(app: &App, clip: usize, source_seconds: f64, red: bool) {
+    let color = if red { "red" } else { "blue" };
+    wait_for(
+        &format!("clip {clip} to seek to {source_seconds:.2}s"),
+        || {
+            preview_is_ready(app, clip)
+                && app
+                    .preview
+                    .borrow()
+                    .as_ref()
+                    .unwrap()
+                    .position()
+                    .is_some_and(|position| (position - source_seconds).abs() < 0.01)
+        },
+    );
+    wait_for(
+        &format!("a {color} frame from clip {clip} at {source_seconds:.2}s"),
+        || {
+            let [r, _, b, _] = app.preview.borrow().as_ref().unwrap().last_pixel.get();
+            if red {
+                r > 180 && b < 40
+            } else {
+                b > 180 && r < 40
+            }
+        },
+    );
 }
 
 #[test]
@@ -141,20 +166,20 @@ fn desktop_edit_preview_persist_export() {
     for position in [90_000, 840_000, 1_470_000, 920_000] {
         app.request_preview(position, false);
     }
-    wait_for("the blue clip after rapid scrubbing", || {
-        preview_is_ready(&app, 1)
-    });
-    assert!((app.preview.borrow().as_ref().unwrap().position().unwrap() - 0.28).abs() < 0.01);
-    wait_for("a blue frame in the OpenGL preview", || {
-        let blue = preview_center(&app);
-        blue[2] > 180 && blue[0] < 40
-    });
-    app.request_preview(1_570_000, false);
-    wait_for("the last red clip", || preview_is_ready(&app, 2));
-    wait_for("a red frame in the OpenGL preview", || {
-        let red = preview_center(&app);
-        red[0] > 180 && red[2] < 40
-    });
+    wait_for_paused_frame(&app, 1, 0.28, false);
+
+    // Exercise both source switches and seeking a second time while paused.
+    for (position, clip, source_seconds, red) in [
+        (1_570_000, 2, 0.92, true),
+        (710_000, 1, 0.04, false),
+        (1_120_000, 1, 0.48, false),
+        (100_000, 0, 0.08, true),
+        (1_250_000, 1, 0.60, false),
+        (1_570_000, 2, 0.92, true),
+    ] {
+        app.request_preview(position, false);
+        wait_for_paused_frame(&app, clip, source_seconds, red);
+    }
 
     app.request_preview(0, true);
     wait_for("playback to enter the blue clip", || {
