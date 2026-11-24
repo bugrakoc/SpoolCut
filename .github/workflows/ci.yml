@@ -1,0 +1,49 @@
+name: Build and test
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    container: rust:1-trixie
+    timeout-minutes: 20
+    env:
+      CARGO_PROFILE_DEV_DEBUG: 0
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install build and media dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends pkg-config libgtk-4-dev libmpv-dev libegl1 libgl1-mesa-dri ffmpeg weston dbus-x11
+          rustup component add rustfmt clippy
+      - name: Check formatting and lint
+        run: |
+          cargo fmt --check
+          cargo clippy --locked --all-targets --features desktop -- -D warnings
+      - name: Test stream-copy export
+        run: cargo test --locked
+      - name: Test the desktop editor on Wayland
+        shell: bash
+        run: |
+          export XDG_RUNTIME_DIR="$(mktemp -d)"
+          export WAYLAND_DISPLAY=spoolcut-ci GDK_BACKEND=wayland GSK_RENDERER=ngl
+          export GTK_A11Y=none LIBGL_ALWAYS_SOFTWARE=1
+          weston --backend=headless --renderer=pixman --shell=kiosk-shell.so \
+            --socket="$WAYLAND_DISPLAY" --width=1280 --height=900 --idle-time=0 --no-config \
+            > weston.log 2>&1 &
+          weston_pid=$!
+          trap 'kill "$weston_pid" 2>/dev/null || true; cat weston.log' EXIT
+          for attempt in {1..50}; do
+            if test -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"; then break; fi
+            kill -0 "$weston_pid"
+            sleep 0.1
+          done
+          test -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
+          dbus-run-session -- cargo test --locked --features desktop --bin spoolcut-desktop -- --ignored
