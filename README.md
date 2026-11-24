@@ -1,2 +1,2 @@
-# SimpleCut
-A simple video cutting and merging app, works losslessly.
+# SpoolCut
+Cut and join video without re-encoding.
