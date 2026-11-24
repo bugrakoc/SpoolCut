@@ -235,11 +235,15 @@ impl Media {
 pub fn inspect(path: &Path, cancel: &AtomicBool) -> Result<MediaInfo> {
     let media =
         Media::open(path, cancel).with_context(|| format!("inspecting {}", path.display()))?;
+    media_info(&media)
+}
+
+pub(crate) fn media_info(media: &Media) -> Result<MediaInfo> {
     Ok(MediaInfo {
         video_codec: media.video.parameter("codec_name")?.into(),
         audio_codec: media.audio.parameter("codec_name")?.into(),
         video_time_base: media.video_base,
-        safe_in_pts: media.cuts.into_keys().collect(),
+        safe_in_pts: media.cuts.keys().copied().collect(),
         video_end_pts: media.video_end_pts,
     })
 }
