@@ -29,6 +29,4 @@ The prototype is ready when a user can assemble, save, reopen, preview, and expo
 
 ## After the Fedora prototype
 
-- Add editable soft subtitles and chapters. Check their alignment against the exported timestamps on longer projects.
 - Expand the supported source combinations using media fixtures and regression tests.
-- Bring up Windows and macOS builds. Validate packaging and embedded preview on each platform before releasing ports.
