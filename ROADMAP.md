@@ -10,11 +10,13 @@ SpoolCut is a free, open-source desktop editor for cutting and joining video wit
 
 ## Milestone 1 — Prove stream-copy export
 
-- [ ] Model a project as a set of source files and an ordered sequence of clips. Each clip references its source and its own in and out points, so one source can appear several times.
-- [ ] Probe streams and index safe cut points. Use source timestamps and time bases so the timeline handles footage whose timestamps do not align with a fixed frame grid.
-- [ ] Start with matching camera clips and MKV output. Verify H.264 and HEVC workflows with representative footage and document the combinations the prototype supports.
-- [ ] Validate the requested boundaries and stream compatibility before export. Copy the selected video and audio streams, report any blocking mismatch, and make cancellation or failure leave no partial final file.
-- [ ] Test a generated `A → B → A` sequence with at least one trimmed range. Verify clip order, frames around each join, output duration, A/V timing, and that both streams were copied. Compare packet payloads where framing is preserved.
+- [x] Model a project as a set of source files and an ordered sequence of clips. Each clip references its source and its own in and out points, so one source can appear several times.
+- [x] Probe streams and index safe cut points. Use source timestamps and time bases so the timeline handles footage whose timestamps do not align with a fixed frame grid.
+- [x] Start with matching camera clips and MKV output. Verify H.264 and HEVC workflows with representative footage and document the combinations the prototype supports.
+- [x] Validate the requested boundaries and stream compatibility before export. Copy the selected video and audio streams, report any blocking mismatch, and make cancellation or failure leave no partial final file.
+- [x] Test a generated `A → B → A` sequence with at least one trimmed range. Verify clip order, frames around each join, output duration, A/V timing, and that both streams were copied. Compare packet payloads where framing is preserved.
+
+The [command-line prototype](README.md) verifies H.264 and HEVC with generated fixtures. Testing on physical cameras and Fedora hardware is part of Milestone 2.
 
 ## Milestone 2 — Ship a usable Fedora prototype
 
