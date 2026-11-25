@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
+import urllib.parse
 import urllib.request
 import zipfile
 
@@ -117,12 +118,19 @@ def copy_file(prefix, path, destination):
         shutil.copy2(source, target)
 
 
+def source_url(name):
+    return f"{MSYS2}/sources/{urllib.parse.quote(name)}"
+
+
 def download_source(name, directory):
     for suffix in ("", ".sig"):
-        url = f"{MSYS2}/sources/{name}{suffix}"
-        with urllib.request.urlopen(url, timeout=90) as response:
-            with (directory / (name + suffix)).open("wb") as output:
-                shutil.copyfileobj(response, output)
+        url = source_url(name + suffix)
+        try:
+            with urllib.request.urlopen(url, timeout=90) as response:
+                with (directory / (name + suffix)).open("wb") as output:
+                    shutil.copyfileobj(response, output)
+        except OSError as error:
+            raise RuntimeError(f"Cannot fetch corresponding source: {url}") from error
     run("bash", "/usr/bin/pacman-key", "--verify",
         (directory / (name + ".sig")).as_posix(), (directory / name).as_posix())
 
@@ -147,7 +155,7 @@ def write_archives(prefix, bundle, sources, output, packages):
         license_ids = ", ".join(record.get("LICENSE", "").splitlines())
         inventory.append(
             f"{package}\t{version}\t{license_ids}\t{record['SHA256SUM']}\t"
-            f"{MSYS2}/ucrt64/{record['FILENAME']}\t{MSYS2}/sources/{name}\n"
+            f"{MSYS2}/ucrt64/{urllib.parse.quote(record['FILENAME'])}\t{source_url(name)}\n"
         )
         for path in installed_files(package):
             if path.startswith("share/licenses/"):
@@ -201,6 +209,9 @@ def main():
     args = parser.parse_args()
     if os.environ.get("MSYSTEM") != "UCRT64":
         parser.error("run this script from MSYS2 UCRT64")
+    # The source archive includes the committed tree. Refuse to package an
+    # uncommitted source tree whose binaries could differ from that archive.
+    run("git", "diff", "--quiet", "HEAD", "--")
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="spoolcut-package-") as temp:
