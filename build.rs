@@ -36,21 +36,19 @@ fn main() {
     icon.extend_from_slice(png);
     fs::write(out.join("spoolcut.ico"), icon).unwrap();
 
+    let resource = format!(
+        "#define APP_MAJOR {}\n#define APP_MINOR {}\n#define APP_PATCH {}\n#define APP_VERSION \"{}\"\n{}",
+        env!("CARGO_PKG_VERSION_MAJOR"),
+        env!("CARGO_PKG_VERSION_MINOR"),
+        env!("CARGO_PKG_VERSION_PATCH"),
+        env!("CARGO_PKG_VERSION"),
+        include_str!("packaging/windows/spoolcut.rc"),
+    );
+    fs::write(out.join("spoolcut.rc"), resource).unwrap();
     let resources = out.join("spoolcut-resources.o");
     let status = Command::new(env::var_os("WINDRES").unwrap_or_else(|| "windres".into()))
-        .args(["-O", "coff", "-I"])
-        .arg(&out)
-        .args([
-            "-D",
-            concat!("APP_MAJOR=", env!("CARGO_PKG_VERSION_MAJOR")),
-            "-D",
-            concat!("APP_MINOR=", env!("CARGO_PKG_VERSION_MINOR")),
-            "-D",
-            concat!("APP_PATCH=", env!("CARGO_PKG_VERSION_PATCH")),
-            "-D",
-            concat!("APP_VERSION=\"", env!("CARGO_PKG_VERSION"), "\""),
-            "packaging/windows/spoolcut.rc",
-        ])
+        .current_dir(&out)
+        .args(["-O", "coff", "spoolcut.rc"])
         .arg(&resources)
         .status()
         .expect("run windres from MSYS2 UCRT64");

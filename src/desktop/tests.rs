@@ -249,7 +249,7 @@ fn desktop_edit_preview_persist_export() {
     app.save_to(project.clone());
     assert_eq!(
         Project::load(&project).unwrap().sources["source-1"],
-        PathBuf::from("blue.mp4")
+        PathBuf::from("blue ş clip.mp4")
     );
     app.new_project();
     app.open_project(project.clone());

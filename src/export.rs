@@ -127,7 +127,8 @@ pub fn export_with_progress(
         .with_context(|| format!("creating temporary files in {}", parent.display()))?;
     // Absolute paths remain valid while the concat subprocess uses the temporary directory.
     let directory = workspace.path().canonicalize()?;
-    let mut manifest = File::create(directory.join("timeline.ffconcat"))?;
+    let manifest_path = directory.join("timeline.ffconcat");
+    let mut manifest = File::create(&manifest_path)?;
     writeln!(manifest, "ffconcat version 1.0")?;
     for (index, clip) in plan.clips.iter().enumerate() {
         progress(ExportProgress::Copying {
@@ -139,7 +140,20 @@ pub fn export_with_progress(
         media.check_source()?;
         write_clip(media, clip, &directory.join(&name), cancel)
             .with_context(|| format!("copying clip {} ({})", index + 1, clip.source))?;
+        #[cfg(not(windows))]
         writeln!(manifest, "file {name}")?;
+        #[cfg(windows)]
+        {
+            // A verbatim Windows path can contain '?' and the working directory
+            // passed to CreateProcess has length limits. Use a complete file URL
+            // so the concat demuxer does not try to resolve a relative URL.
+            let segment = directory.join(&name);
+            let path = segment
+                .to_str()
+                .context("FFmpeg requires a Unicode path on Windows")?;
+            let quoted = path.replace('\'', "'\\''");
+            writeln!(manifest, "file 'file:{quoted}'")?;
+        }
         writeln!(manifest, "duration {}", ffmpeg_time(clip.duration_us))?;
     }
     drop(manifest);
@@ -147,22 +161,34 @@ pub fn export_with_progress(
     progress(ExportProgress::Joining);
     let staged_output = directory.join("output.mkv");
     let mut command = ffmpeg()?;
-    command.current_dir(&directory).args([
-        "-protocol_whitelist",
-        "file",
-        "-f",
-        "concat",
-        "-safe",
-        "1",
-        "-auto_convert",
-        "0",
-        "-i",
-        "timeline.ffconcat",
-        "-map",
-        "0:v:0",
-        "-map",
-        "0:a:0",
-    ]);
+    #[cfg(windows)]
+    let input = manifest_path.as_path();
+    #[cfg(not(windows))]
+    let input = {
+        command.current_dir(&directory);
+        Path::new("timeline.ffconcat")
+    };
+    command
+        .args([
+            "-protocol_whitelist",
+            "file",
+            "-f",
+            "concat",
+            "-safe",
+            if cfg!(windows) { "0" } else { "1" },
+            "-auto_convert",
+            "0",
+            "-i",
+        ])
+        .arg(input)
+        .args([
+            "-map",
+            "0:v:0",
+            "-map",
+            "0:a:0",
+            "-bsf:a",
+            &aac_duration(&sources[&plan.clips[0].source]),
+        ]);
     mkv_output(&mut command, &staged_output);
     process::run(&mut command, None, cancel).context("joining copied clips")?;
     progress(ExportProgress::Verifying);
@@ -375,10 +401,23 @@ fn write_clip(media: &Media, clip: &PlannedClip, output: &Path, cancel: &AtomicB
             "-bsf:v",
             &select(&clip.video_packets),
             "-bsf:a",
-            &select(&clip.audio_packets),
+            &format!("{},{}", select(&clip.audio_packets), aac_duration(media)),
         ]);
     mkv_output(&mut command, output);
     process::run(&mut command, None, cancel)
+}
+
+fn aac_duration(media: &Media) -> String {
+    // Every selected AAC-LC packet is a complete frame. Set its duration in
+    // the current time base so FFmpeg cannot infer a longer Matroska tail.
+    let TimeBase {
+        numerator,
+        denominator,
+    } = media.audio_base;
+    format!(
+        "setts=duration=round({}*{numerator}/{denominator}/TB)",
+        media.audio_frame_ticks
+    )
 }
 
 #[derive(Deserialize)]
