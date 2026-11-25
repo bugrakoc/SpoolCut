@@ -54,12 +54,12 @@ Use explicit ownership, RAII, standard containers and smart pointers where appro
 
 ### C — Port and verify the core
 
-- [ ] Reimplement the existing algorithms, not a simplified approximation; keep project model, probe/index, timestamp math, compatibility validation, planning, export, verification and process/file handling separable.
+- [x] Reimplement the existing algorithms, not a simplified approximation; keep project model, probe/index, timestamp math, compatibility validation, planning, export, verification and process/file handling separable.
 - [ ] Preserve accepted inputs (currently compatible MP4/MOV H.264/HEVC video and AAC-LC audio), stream selection, decoder-configuration checks, closed IDR and presentation-order constraints, exclusive out points, full AAC packet selection, existing timestamp tolerances and explicit unsupported-media errors. Confirm details against the integrated Linux/Windows baseline, including the HEVC Main 10 export/player compatibility case and default track dispositions.
 - [ ] Preserve the stream-copy staging/join/verification pipeline, cancellation, safe cleanup, destination no-overwrite and atomic publication. Maintain Unicode/space/long-path and source identity behavior across OSes. Clearly reject unsupported filesystems or unsafe publication cases; do not silently weaken guarantees.
 - [ ] Keep project JSON schema, relative paths and integer PTS exact; load reference projects in both implementations and compare plan results. Preserve CLI inspect/plan/export, error handling and exit behavior.
 - [ ] Port existing unit/integration tests and generated fixtures. Differentially compare reference and C++ plans, accepted/rejected cut points, video/audio payload hashes where framing permits, decoded frame order, duration, A/V offsets and cancellation behavior. Cover B-frames, fractional/VFR time bases, repeated A-B-A ranges, mismatched streams, destination races and failures. No reliance on output file byte equality when muxer metadata differs.
-- [ ] Run sanitizer builds (ASan/UBSan where supported), compiler warnings, and static analysis on appropriate runners. Record actual results. A passing GUI smoke test is not sufficient to validate lossless export.
+- [x] Run sanitizer builds (ASan/UBSan where supported), compiler warnings, and static analysis on appropriate runners. Record actual results. A passing GUI smoke test is not sufficient to validate lossless export.
 
 ### D — Desktop feature parity
 

@@ -1,4 +1,4 @@
-# C++ and Qt feasibility evidence
+# C++ and Qt migration status
 
 ## A. Rust reference
 
@@ -251,8 +251,35 @@ video start offsets at the three clip boundaries.
 
 Both tracks were marked default and FFmpeg decoded the generated HEVC Main
 10 exports. The affected Windows player and original user footage still
-need a manual test. The native Windows results are tracked in
-[Qt core CI run 45592308525](https://github.com/bugrakoc/SpoolCut/actions/runs/45592308525).
-The Windows test suite covers cancellation through the core API. It skips
-the interactive console Ctrl+C test. Physical removable/exFAT destination
-behavior remains a packaging and manual acceptance check.
+need a manual test.
+
+### Recovered verification checkpoint
+
+The branch was recovered at [`039fe0b`](https://github.com/bugrakoc/SpoolCut/commit/039fe0b46e67bc0e231b5ed4d5c1795489125b8f).
+The pinned reference remains `39cb4ee`. Three commits after the initial core
+port had already added staged export failure tests, fixed a Windows sharing
+violation by closing the staging file before project replacement, and kept
+Linux symlink traversal intact when resolving project and source parents.
+
+[Core parity run 45593604734](https://github.com/bugrakoc/SpoolCut/actions/runs/45593604734)
+passed all seven Linux cases in the warnings-as-errors and ASan/UBSan builds.
+Clang static analysis passed. The native Windows job passed all 11 Rust
+reference tests and six of seven C++ CTest cases. Its generated AVC, HEVC,
+Main 10 and VFR exports matched the Rust reference. The Windows Ctrl+C
+case returned 0 after publication instead of 130. The test now explicitly
+enables Ctrl+C delivery before launching each program on its own console.
+The replacement Windows CI result is required to close the automated core
+gate. The Windows core API test already exercises cancellation while a
+media tool is running and verifies staging cleanup.
+
+### Remaining roadmap gates
+
+- **A:** Complete. **B:** Prototype approved. Matched target-machine performance
+  measurements and the full display-scaling comparison are still open.
+- **C:** Core and differential fixtures implemented. Complete native Windows
+  CLI Ctrl+C verification. Check original Main 10 footage with the affected
+  player and removable/exFAT behavior during platform acceptance.
+- **D:** Desktop feature parity is outstanding. The verified Qt prototype is
+  the starting point for integration with the shared core.
+- **E:** Replacement builds, packaging acceptance and release review are
+  outstanding. Prototype packages and their smoke results are recorded above.

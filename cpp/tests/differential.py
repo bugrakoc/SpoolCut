@@ -244,8 +244,8 @@ def rejected(root, clis):
 
 
 @contextlib.contextmanager
-def interrupt_process(child):
-    if os.name != "nt":
+def interrupt_process(child, kernel):
+    if kernel is None:
         child.send_signal(signal.SIGINT)
         yield
         return
@@ -254,7 +254,6 @@ def interrupt_process(child):
     # runner's shared console would also signal the test harness and CTest.
     import ctypes
 
-    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
     kernel.FreeConsole()
     if not kernel.AttachConsole(child.pid):
         raise ctypes.WinError(ctypes.get_last_error())
@@ -275,8 +274,18 @@ def interrupt(root, clis):
     project = root / "interrupt.json"
     save_project(project, {"a": a.name}, [clip("a", *info["safe_in_pts"][:2])] * 25)
     output = root / "interrupt.mkv"
+    kernel = None
+    flags = 0
+    if os.name == "nt":
+        import ctypes
+
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        flags = subprocess.CREATE_NEW_CONSOLE
     for cli in clis:
-        flags = subprocess.CREATE_NEW_CONSOLE if os.name == "nt" else 0
+        # A process inherits its parent's Ctrl+C ignore flag, even when
+        # launched with its own console. Enable delivery before each spawn.
+        if kernel is not None and not kernel.SetConsoleCtrlHandler(None, False):
+            raise ctypes.WinError(ctypes.get_last_error())
         with subprocess.Popen([cli, "export", project, output], stdout=subprocess.PIPE,
                               stderr=subprocess.PIPE, creationflags=flags) as child:
             try:
@@ -285,7 +294,7 @@ def interrupt(root, clis):
                     assert time.monotonic() < deadline, f"{cli} did not reach staging"
                     time.sleep(0.005)
                 assert child.poll() is None and list(root.glob(".spoolcut-*"))
-                with interrupt_process(child):
+                with interrupt_process(child, kernel):
                     _, errors = child.communicate(timeout=10)
                 assert child.returncode == 130 and b"cancelled" in errors, (cli, child.returncode, errors)
             finally:
