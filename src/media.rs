@@ -119,6 +119,7 @@ impl Media {
     pub(crate) fn open(path: &Path, cancel: &AtomicBool) -> Result<Self> {
         let source_path = std::path::absolute(path)?;
         let path = source_path.canonicalize()?;
+        ensure!(path.metadata()?.is_file(), "source must be a regular file");
         let mut file = File::open(&path)?;
         let identity = SourceIdentity::read(&file)?;
         let Streams { streams } = probe(
@@ -221,6 +222,15 @@ impl Media {
     }
 
     pub(crate) fn check_source(&self) -> Result<()> {
+        let metadata = self
+            .source_path
+            .metadata()
+            .with_context(|| format!("checking source {}", self.source_path.display()))?;
+        ensure!(
+            metadata.is_file(),
+            "source is no longer a regular file: {}",
+            self.source_path.display()
+        );
         let current = File::open(&self.source_path)
             .with_context(|| format!("checking source {}", self.source_path.display()))?;
         ensure!(

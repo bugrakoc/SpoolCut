@@ -16,6 +16,8 @@ try {
         $gui.Dispose()
     }
 
+    $testExe = (Get-Content -LiteralPath windows-desktop-test.txt -Raw).Trim()
+    Copy-Item -LiteralPath $testExe -Destination (Join-Path $bin 'desktop-smoke.exe')
     Push-Location $root
     try {
         & (Join-Path $bin 'ffmpeg.exe') -nostdin -v error -f lavfi -i 'testsrc2=size=160x96:rate=25:duration=2' -f lavfi -i 'sine=sample_rate=48000:duration=2' -c:v libx264 -tag:v avc1 -x264-params 'keyint=16:min-keyint=16:scenecut=0:open-gop=0' -c:a aac 'test ç video.mp4'
@@ -28,6 +30,10 @@ try {
         $project | ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8NoBOM 'project.json'
         & $cli export 'project.json' 'out ü.mkv'
         & (Join-Path $bin 'ffprobe.exe') -v error -show_entries 'stream=codec_name' 'out ü.mkv'
+        $env:PATH = "$bin;$env:PATH"
+        $env:SPOOLCUT_PREVIEW = 'software'
+        $env:GSK_RENDERER = 'cairo'
+        & (Join-Path $bin 'desktop-smoke.exe') --ignored --nocapture
     } finally {
         Pop-Location
     }

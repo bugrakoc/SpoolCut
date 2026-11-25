@@ -84,13 +84,13 @@ def copy_runtime(prefix, bundle, release):
             ):
                 raise RuntimeError(f"Missing DLL {name} imported by {source.name}")
 
-    for package in ("gtk4", "glib2", "adwaita-icon-theme", "hicolor-icon-theme"):
+    for package in ("gtk4", "glib2", "fontconfig", "adwaita-icon-theme", "hicolor-icon-theme"):
         owner = UCRT + package
         packages.add(owner)
         for path in installed_files(owner):
             if path.startswith((
                 "share/icons/", "share/glib-2.0/schemas/", "share/gtk-4.0/",
-                "share/locale/",
+                "share/locale/", "etc/fonts/",
             )):
                 copy_file(prefix, path, bundle)
     schemas = bundle / "share/glib-2.0/schemas"
