@@ -471,3 +471,24 @@ The key retests are the original export and Windows player, the Fedora software
 preview, and reopening the project with a moved source. See the
 [maintainer checklist](#maintainer-checklist) for hardware and filesystem
 acceptance.
+
+### Verified 0.2.1 packages
+
+The [core run](https://github.com/bugrakoc/SpoolCut/actions/runs/45650843971)
+passed all eight CTest cases on Linux and Windows, including the 10 ms
+duration regression. It exercised the existing packet-hash, frame-order,
+timing, cancellation, and destination protection checks. Local Linux
+software preview tests also passed at 100%, 150%, and 200% synthetic scaling.
+
+The [desktop and package run](https://github.com/bugrakoc/SpoolCut/actions/runs/45651333003)
+passed at [`7bfffad`](https://github.com/bugrakoc/SpoolCut/commit/7bfffad255ca5f8a8d4275541e5671fc2818ffc4).
+It covered missing-source reopen and relink, zoom below Fit, renderer smoke
+tests, the software-renderer sanitizer suite, and relocated AVC and HEVC
+Main 10 exports. The portable Windows smoke verified the Qt executable's
+embedded product version and the CLI version. The Fedora smoke verified
+the CLI version from the extracted AppImage.
+
+| Platform | Test package | Corresponding source |
+| --- | --- | --- |
+| Fedora x86-64 | [SpoolCut 0.2.1 AppImage](https://github.com/bugrakoc/SpoolCut/actions/runs/45651333003/artifacts/15040107093) | [Linux sources](https://github.com/bugrakoc/SpoolCut/actions/runs/45651333003/artifacts/15039689778) |
+| Windows x86-64 | [SpoolCut 0.2.1 ZIP](https://github.com/bugrakoc/SpoolCut/actions/runs/45651333003/artifacts/15040927274) | [Windows sources](https://github.com/bugrakoc/SpoolCut/actions/runs/45651333003/artifacts/15040822412) |
