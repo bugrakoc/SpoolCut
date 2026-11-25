@@ -755,6 +755,7 @@ dependencies = [
  "ctrlc",
  "gl",
  "gtk4",
+ "libc",
  "libloading",
  "libmpv2-sys",
  "serde",

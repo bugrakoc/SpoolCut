@@ -6,6 +6,7 @@ use std::{
 };
 
 use anyhow::{Context, Result, bail, ensure};
+use gtk::{gdk, glib};
 use libmpv2_sys as mpv;
 
 #[derive(Debug)]
@@ -20,11 +21,15 @@ pub struct Preview {
     player: NonNull<mpv::mpv_handle>,
     render: Option<NonNull<mpv::mpv_render_context>>,
     redraw: Box<AtomicBool>,
-    // Keep the provider loaded for the lifetime of the OpenGL render context.
-    _egl: libloading::Library,
-    lookup: Box<GetProcAddress>,
+    opengl: Option<OpenGl>,
     #[cfg(test)]
     pub last_pixel: std::cell::Cell<[u8; 4]>,
+}
+
+struct OpenGl {
+    // Keep the provider loaded for the lifetime of the render context.
+    _egl: libloading::Library,
+    lookup: Box<GetProcAddress>,
 }
 
 type GetProcAddress = unsafe extern "C" fn(*const c_char) -> *mut c_void;
@@ -37,14 +42,22 @@ impl Preview {
         let egl = unsafe { libloading::Library::new("libEGL.so.1") }.context("loading EGL")?;
         // SAFETY: The system EGL library exposes this function with the EGL ABI.
         let lookup = Box::new(unsafe { *egl.get::<GetProcAddress>(b"eglGetProcAddress\0")? });
+        Self::with_renderer(Some(OpenGl { _egl: egl, lookup }))
+    }
+
+    pub fn new_software() -> Result<Self> {
+        Self::with_renderer(None)
+    }
+
+    fn with_renderer(opengl: Option<OpenGl>) -> Result<Self> {
+        // SAFETY: The instance is uniquely owned and the application has initialized its locale.
         let player =
             NonNull::new(unsafe { mpv::mpv_create() }).context("creating libmpv player")?;
         let mut this = Self {
             player,
             render: None,
             redraw: Box::new(AtomicBool::new(false)),
-            _egl: egl,
-            lookup,
+            opengl,
             #[cfg(test)]
             last_pixel: Default::default(),
         };
@@ -78,34 +91,49 @@ impl Preview {
         Ok(this)
     }
 
+    pub fn is_software(&self) -> bool {
+        self.opengl.is_none()
+    }
+
     fn init_render(&mut self) -> Result<()> {
-        gl::load_with(|name| {
-            let name = CString::new(name).expect("GL function names contain no null bytes");
-            // SAFETY: EGL receives a valid null-terminated OpenGL symbol name.
-            unsafe { (self.lookup)(name.as_ptr()) }
-        });
-        ensure!(
-            gl::GetIntegerv::is_loaded(),
-            "OpenGL functions are unavailable"
-        );
-        let mut init = mpv::mpv_opengl_init_params {
-            get_proc_address: Some(gl_proc),
-            get_proc_address_ctx: ptr::from_mut(self.lookup.as_mut()).cast(),
+        let mut params = Vec::with_capacity(3);
+        let mut init;
+        let api = if let Some(opengl) = &mut self.opengl {
+            gl::load_with(|name| {
+                let name = CString::new(name).expect("GL function names contain no null bytes");
+                // SAFETY: EGL receives a valid null-terminated OpenGL symbol name.
+                unsafe { (opengl.lookup)(name.as_ptr()) }
+            });
+            ensure!(
+                gl::GetIntegerv::is_loaded(),
+                "OpenGL functions are unavailable"
+            );
+            init = mpv::mpv_opengl_init_params {
+                get_proc_address: Some(gl_proc),
+                get_proc_address_ctx: ptr::from_mut(opengl.lookup.as_mut()).cast(),
+            };
+            c"opengl"
+        } else {
+            init = mpv::mpv_opengl_init_params {
+                get_proc_address: None,
+                get_proc_address_ctx: ptr::null_mut(),
+            };
+            c"sw"
         };
-        let mut params = [
-            mpv::mpv_render_param {
-                type_: mpv::mpv_render_param_type_MPV_RENDER_PARAM_API_TYPE,
-                data: c"opengl".as_ptr().cast_mut().cast(),
-            },
-            parameter(
+        params.push(mpv::mpv_render_param {
+            type_: mpv::mpv_render_param_type_MPV_RENDER_PARAM_API_TYPE,
+            data: api.as_ptr().cast_mut().cast(),
+        });
+        if self.opengl.is_some() {
+            params.push(parameter(
                 mpv::mpv_render_param_type_MPV_RENDER_PARAM_OPENGL_INIT_PARAMS,
                 &mut init,
-            ),
-            parameter_end(),
-        ];
+            ));
+        }
+        params.push(parameter_end());
         let mut context = ptr::null_mut();
-        // SAFETY: The GL context is current, the lookup outlives the render
-        // context, and the parameter array remains live throughout this call.
+        // SAFETY: The parameter array lives through this call. For OpenGL,
+        // the context is current and the lookup outlives the renderer.
         check(unsafe {
             mpv::mpv_render_context_create(&mut context, self.player.as_ptr(), params.as_mut_ptr())
         })?;
@@ -201,6 +229,67 @@ impl Preview {
             self.last_pixel.set(pixel);
         }
         Ok(())
+    }
+
+    pub fn draw_software(&self, width: i32, height: i32) -> Result<gdk::MemoryTexture> {
+        let context = self.render.context("Preview renderer is unavailable")?;
+        let scale = (960.0 / f64::from(width))
+            .min(540.0 / f64::from(height))
+            .min(1.0);
+        let mut size = [
+            (f64::from(width) * scale).round().max(1.0) as i32,
+            (f64::from(height) * scale).round().max(1.0) as i32,
+        ];
+        let mut stride = (size[0] as usize * 4).next_multiple_of(64);
+        let mut frame = AlignedFrame::new(stride * size[1] as usize);
+        let mut block = 0i32;
+        let mut params = [
+            parameter(
+                mpv::mpv_render_param_type_MPV_RENDER_PARAM_SW_SIZE,
+                &mut size,
+            ),
+            mpv::mpv_render_param {
+                type_: mpv::mpv_render_param_type_MPV_RENDER_PARAM_SW_FORMAT,
+                data: c"rgb0".as_ptr().cast_mut().cast(),
+            },
+            parameter(
+                mpv::mpv_render_param_type_MPV_RENDER_PARAM_SW_STRIDE,
+                &mut stride,
+            ),
+            mpv::mpv_render_param {
+                type_: mpv::mpv_render_param_type_MPV_RENDER_PARAM_SW_POINTER,
+                data: frame.pixels_mut().as_mut_ptr().cast(),
+            },
+            parameter(
+                mpv::mpv_render_param_type_MPV_RENDER_PARAM_BLOCK_FOR_TARGET_TIME,
+                &mut block,
+            ),
+            parameter_end(),
+        ];
+        // SAFETY: The writable buffer, size, format and aligned stride live
+        // through the synchronous libmpv render call.
+        check(unsafe {
+            mpv::mpv_render_context_update(context.as_ptr());
+            mpv::mpv_render_context_render(context.as_ptr(), params.as_mut_ptr())
+        })?;
+        // libmpv leaves each pixel's fourth byte unspecified in rgb0.
+        for alpha in frame.pixels_mut().iter_mut().skip(3).step_by(4) {
+            *alpha = 255;
+        }
+        #[cfg(test)]
+        {
+            let center = size[1] as usize / 2 * stride + size[0] as usize / 2 * 4;
+            self.last_pixel
+                .set(frame.as_ref()[center..center + 4].try_into().unwrap());
+        }
+        let bytes = glib::Bytes::from_owned(frame);
+        Ok(gdk::MemoryTexture::new(
+            size[0],
+            size[1],
+            gdk::MemoryFormat::R8g8b8a8,
+            &bytes,
+            stride,
+        ))
     }
 
     pub fn load(&self, path: &Path, start: f64, end: f64, playing: bool) -> Result<i64> {
@@ -301,6 +390,34 @@ impl Preview {
             }
         }
         events
+    }
+}
+
+struct AlignedFrame {
+    allocation: Vec<u8>,
+    offset: usize,
+    length: usize,
+}
+
+impl AlignedFrame {
+    fn new(length: usize) -> Self {
+        let allocation = vec![0; length + 63];
+        let offset = allocation.as_ptr().align_offset(64);
+        Self {
+            allocation,
+            offset,
+            length,
+        }
+    }
+
+    fn pixels_mut(&mut self) -> &mut [u8] {
+        &mut self.allocation[self.offset..self.offset + self.length]
+    }
+}
+
+impl AsRef<[u8]> for AlignedFrame {
+    fn as_ref(&self) -> &[u8] {
+        &self.allocation[self.offset..self.offset + self.length]
     }
 }
 

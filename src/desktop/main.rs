@@ -1,5 +1,7 @@
 mod editor;
+mod interactive;
 mod preview;
+mod timeline;
 mod widgets;
 
 use std::{
@@ -16,11 +18,12 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use gtk::{gio, glib, prelude::*};
+use gtk::{gdk, gio, glib, prelude::*};
 use spoolcut::{ExportProgress, Project, export_with_progress};
 
 use editor::{Editor, IndexedMedia, Segment, source_name, timecode};
 use preview::{Event, Preview};
+use timeline::{ClipVisual, Draft, Edge, Hit};
 use widgets::{Widgets, seconds};
 
 #[derive(Default)]
@@ -57,17 +60,56 @@ enum JobEvent {
     Exported(Result<PathBuf, String>),
 }
 
+struct TimelineDrag {
+    origin_x: f64,
+    origin_time: i64,
+    pointer_x: f64,
+    moved: bool,
+    mode: DragMode,
+}
+
+enum DragMode {
+    Scrub {
+        snap_click: bool,
+    },
+    Reorder {
+        clip: usize,
+        slot: usize,
+    },
+    Trim {
+        clip: usize,
+        edge: Edge,
+        original_time: f64,
+        cuts: Vec<(f64, i64)>,
+        snapped_pts: Option<i64>,
+    },
+}
+
 struct App {
     ui: Widgets,
     state: RefCell<State>,
     preview: RefCell<Option<Preview>>,
+    preview_error: RefCell<Option<String>>,
+    fallback_queued: Cell<bool>,
     tx: mpsc::Sender<JobEvent>,
     rx: mpsc::Receiver<JobEvent>,
     closed: Cell<bool>,
     rebuilding_bin: Cell<bool>,
+    timeline_drag: RefCell<Option<TimelineDrag>>,
+}
+
+fn initialize_locale() {
+    gtk::disable_setlocale();
+    // SAFETY: Called at startup before GTK or libmpv starts worker threads.
+    // Keep the user's locale except for libmpv's required numeric locale.
+    unsafe {
+        libc::setlocale(libc::LC_ALL, c"".as_ptr());
+        libc::setlocale(libc::LC_NUMERIC, c"C".as_ptr());
+    }
 }
 
 fn main() -> glib::ExitCode {
+    initialize_locale();
     glib::set_application_name("SpoolCut");
     let application = gtk::Application::new(
         Some("io.github.bugrakoc.SpoolCut"),
@@ -97,10 +139,13 @@ impl App {
             ui: Widgets::new(application),
             state: RefCell::new(State::default()),
             preview: RefCell::new(None),
+            preview_error: RefCell::new(None),
+            fallback_queued: Cell::new(false),
             tx,
             rx,
             closed: Cell::new(false),
             rebuilding_bin: Cell::new(false),
+            timeline_drag: RefCell::new(None),
         });
         app.connect();
         app.refresh();
@@ -146,23 +191,13 @@ impl App {
             app.state.borrow_mut().editor.redo();
             app.refresh();
         });
-        self.bind(&self.ui.play, |app| {
-            let (position, playing) = {
-                let state = app.state.borrow();
-                let position = if state.position >= state.total() {
-                    0
-                } else {
-                    state.position
-                };
-                (position, !state.playing)
-            };
-            app.request_preview(position, playing);
+        self.bind(&self.ui.play, |app| app.toggle_play());
+        self.bind(&self.ui.zoom_in, |app| app.ui.timeline.zoom(1.5, None));
+        self.bind(&self.ui.zoom_out, |app| {
+            app.ui.timeline.zoom(1.0 / 1.5, None)
         });
-        self.bind(&self.ui.trim_in, |app| app.trim(true));
-        self.bind(&self.ui.trim_out, |app| app.trim(false));
+        self.bind(&self.ui.zoom_fit, |app| app.ui.timeline.fit());
         self.bind(&self.ui.split, |app| app.split());
-        self.bind(&self.ui.earlier, |app| app.move_clip(-1));
-        self.bind(&self.ui.later, |app| app.move_clip(1));
         self.bind(&self.ui.remove, |app| app.remove_clip());
 
         let weak = Rc::downgrade(self);
@@ -190,13 +225,7 @@ impl App {
                 app.append();
             }
         });
-        let weak = Rc::downgrade(self);
-        self.ui.scale.connect_change_value(move |_, _, value| {
-            if let Some(app) = weak.upgrade() {
-                app.request_preview((value * 1_000_000.0).round() as i64, false);
-            }
-            glib::Propagation::Stop
-        });
+        self.connect_timeline();
         let weak = Rc::downgrade(self);
         self.ui.window.connect_close_request(move |_| {
             let Some(app) = weak.upgrade() else {
@@ -225,10 +254,7 @@ impl App {
                 .map_or_else(Preview::new, |error| Err(error.into()));
             match result {
                 Ok(player) => *app.preview.borrow_mut() = Some(player),
-                Err(error) => {
-                    app.ui.placeholder.set_text("Preview unavailable");
-                    app.ui.message(&format!("Preview unavailable. {error:#}"));
-                }
+                Err(error) => app.schedule_software_preview(error),
             }
             app.controls();
         });
@@ -237,20 +263,77 @@ impl App {
             let Some(app) = weak.upgrade() else {
                 return glib::Propagation::Proceed;
             };
-            if let Some(player) = app.preview.borrow().as_ref()
-                && let Err(error) = player.draw()
-            {
-                app.ui
-                    .message(&format!("Preview rendering failed. {error:#}"));
+            let result = app
+                .preview
+                .borrow()
+                .as_ref()
+                .filter(|player| !player.is_software())
+                .map(Preview::draw);
+            if let Some(Err(error)) = result {
+                app.schedule_software_preview(error);
             }
             glib::Propagation::Stop
         });
         let weak = Rc::downgrade(self);
         self.ui.canvas.connect_unrealize(move |area| {
             if let Some(app) = weak.upgrade() {
-                area.make_current();
+                let mut preview = app.preview.borrow_mut();
+                if preview.as_ref().is_some_and(|player| !player.is_software()) {
+                    area.make_current();
+                    preview.take();
+                }
+            }
+        });
+    }
+
+    fn schedule_software_preview(self: &Rc<Self>, cause: anyhow::Error) {
+        if self.fallback_queued.replace(true) {
+            return;
+        }
+        let weak = Rc::downgrade(self);
+        glib::idle_add_local_once(move || {
+            let Some(app) = weak.upgrade() else { return };
+            app.fallback_queued.set(false);
+            if app.closed.get()
+                || app
+                    .preview
+                    .borrow()
+                    .as_ref()
+                    .is_some_and(Preview::is_software)
+            {
+                return;
+            }
+            if app.preview.borrow().is_some() {
+                app.ui.canvas.make_current();
                 app.preview.borrow_mut().take();
             }
+            let (position, playing) = {
+                let mut state = app.state.borrow_mut();
+                state.active = None;
+                state.started_id = None;
+                state.pending = None;
+                (state.position, state.playing)
+            };
+            match Preview::new_software() {
+                Ok(player) => {
+                    eprintln!("OpenGL preview unavailable, using software rendering: {cause:#}");
+                    *app.preview.borrow_mut() = Some(player);
+                    app.ui
+                        .preview_stack
+                        .set_visible_child(&app.ui.software_canvas);
+                    if !app.state.borrow().segments.is_empty() {
+                        app.request_preview(position, playing);
+                    }
+                }
+                Err(error) => {
+                    let message = format!("OpenGL preview: {cause:#}. Software preview: {error:#}");
+                    eprintln!("{message}");
+                    *app.preview_error.borrow_mut() = Some(message.clone());
+                    app.state.borrow_mut().playing = false;
+                    app.ui.message(&message);
+                }
+            }
+            app.controls();
         });
     }
 
@@ -281,6 +364,7 @@ impl App {
     fn new_project(self: &Rc<Self>) {
         self.stop_preview();
         *self.state.borrow_mut() = State::default();
+        self.ui.timeline.fit();
         self.refresh();
         self.ui.message("Import MP4 or MOV files to get started.");
     }
@@ -317,6 +401,7 @@ impl App {
                     state.editor.open(project, path);
                     state.editor.project.sources.values().cloned().collect()
                 };
+                self.ui.timeline.fit();
                 self.start_index(paths, IndexIntent::Open);
                 self.refresh();
             }
@@ -526,104 +611,49 @@ impl App {
     }
 
     fn append(self: &Rc<Self>) {
-        let result = {
+        let selection = {
             let state = self.state.borrow();
-            if state.job.is_some() {
-                return;
-            }
             state
                 .selected_source
-                .as_deref()
-                .context("Select a source in the media bin")
-                .and_then(|id| state.editor.source(id)?.1.initial_clip(id))
+                .clone()
+                .map(|source| (source, state.editor.project.clips.len()))
         };
-        match result {
-            Ok(clip) => {
-                {
-                    let mut state = self.state.borrow_mut();
-                    state.selected_clip = Some(state.editor.project.clips.len());
-                    state.editor.change(|project| project.clips.push(clip));
-                }
-                self.refresh();
-                let selected = self.state.borrow().selected_clip;
-                if let Some(index) = selected {
-                    self.select_clip(index);
-                }
-            }
-            Err(error) => self.ui.message(&format!("{error:#}")),
+        if let Some((source, end)) = selection {
+            self.insert_source(&source, end);
         }
     }
 
-    fn trim(self: &Rc<Self>, trim_in: bool) {
-        let details = {
+    fn insert_source(self: &Rc<Self>, source: &str, slot: usize) -> bool {
+        let result = {
             let state = self.state.borrow();
+            if state.job.is_some() {
+                return false;
+            }
             state
-                .selected_clip
-                .context("Select a clip")
-                .and_then(|index| {
-                    let clip = &state.editor.project.clips[index];
-                    let media = state.editor.source(&clip.source)?.1;
-                    let points = state.editor.cut_points(index, trim_in)?;
-                    let current = if trim_in { clip.in_pts } else { clip.out_pts };
-                    Ok((index, points, current, media.info.video_time_base))
-                })
+                .editor
+                .source(source)
+                .and_then(|(_, media)| media.initial_clip(source))
         };
-        let (index, points, current, base) = match details {
-            Ok(result) => result,
+        match result {
+            Ok(clip) => {
+                let index = {
+                    let mut state = self.state.borrow_mut();
+                    let index = slot.min(state.editor.project.clips.len());
+                    state.selected_clip = Some(index);
+                    state
+                        .editor
+                        .change(|project| project.clips.insert(index, clip));
+                    index
+                };
+                self.refresh();
+                self.select_clip(index);
+                true
+            }
             Err(error) => {
                 self.ui.message(&format!("{error:#}"));
-                return;
+                false
             }
-        };
-        let title = if trim_in { "Trim in" } else { "Trim out" };
-        let labels: Vec<_> = points
-            .iter()
-            .map(|&pts| timecode(base.seconds(pts)))
-            .collect();
-        let label_refs: Vec<_> = labels.iter().map(String::as_str).collect();
-        let list = gtk::DropDown::from_strings(&label_refs);
-        list.set_enable_search(true);
-        list.set_selected(points.iter().position(|&pts| pts == current).unwrap_or(0) as u32);
-        let apply = gtk::Button::with_label("Apply");
-        apply.add_css_class("suggested-action");
-        apply.set_sensitive(!points.is_empty());
-        let content = gtk::Box::new(gtk::Orientation::Vertical, 12);
-        content.set_margin_top(16);
-        content.set_margin_bottom(16);
-        content.set_margin_start(16);
-        content.set_margin_end(16);
-        content.append(&gtk::Label::new(Some("Choose a safe source timestamp.")));
-        content.append(&list);
-        content.append(&apply);
-        let dialog = gtk::Window::builder()
-            .title(title)
-            .transient_for(&self.ui.window)
-            .modal(true)
-            .default_width(320)
-            .child(&content)
-            .build();
-        let window = dialog.downgrade();
-        let app = Rc::downgrade(self);
-        apply.connect_clicked(move |_| {
-            if let (Some(app), Some(&pts)) = (app.upgrade(), points.get(list.selected() as usize)) {
-                let result = app
-                    .state
-                    .borrow_mut()
-                    .editor
-                    .set_boundary(index, trim_in, pts);
-                match result {
-                    Ok(()) => {
-                        app.refresh();
-                        app.select_clip(index);
-                    }
-                    Err(error) => app.ui.message(&format!("{error:#}")),
-                }
-            }
-            if let Some(window) = window.upgrade() {
-                window.close();
-            }
-        });
-        dialog.present();
+        }
     }
 
     fn split(self: &Rc<Self>) {
@@ -635,6 +665,10 @@ impl App {
                 .context("Place the playhead on a clip")
                 .and_then(|index| {
                     let segment = &state.segments[index];
+                    anyhow::ensure!(
+                        position > segment.start_us && position < segment.end_us,
+                        "The playhead is already at a clip boundary"
+                    );
                     let target = segment.source_start + seconds(position - segment.start_us);
                     state.editor.split(index, target)?;
                     state.selected_clip = Some(index + 1);
@@ -648,26 +682,6 @@ impl App {
             }
             Err(error) => self.ui.message(&format!("{error:#}")),
         }
-    }
-
-    fn move_clip(self: &Rc<Self>, distance: isize) {
-        {
-            let mut state = self.state.borrow_mut();
-            let Some(index) = state.selected_clip else {
-                return;
-            };
-            let Some(destination) = index.checked_add_signed(distance) else {
-                return;
-            };
-            if destination >= state.editor.project.clips.len() {
-                return;
-            }
-            state
-                .editor
-                .change(|project| project.clips.swap(index, destination));
-            state.selected_clip = Some(destination);
-        }
-        self.refresh();
     }
 
     fn remove_clip(self: &Rc<Self>) {
@@ -783,12 +797,14 @@ impl App {
                 }
             }
         }
+        self.pan_during_drag();
         self.update_preview();
     }
 
     fn refresh(self: &Rc<Self>) {
+        self.cancel_timeline_drag();
         self.stop_preview();
-        let (media, clips, selected_source) = {
+        let (media, clips, selected_source, timed) = {
             let mut state = self.state.borrow_mut();
             let segments = state.editor.segments();
             (state.segments, state.timeline_error) = match segments {
@@ -841,14 +857,30 @@ impl App {
                         .sources
                         .get(&clip.source)
                         .map_or_else(|| clip.source.clone(), |path| source_name(path));
-                    let duration = state
-                        .segments
-                        .get(index)
-                        .map(|segment| segment.end_us - segment.start_us);
-                    (name, duration)
+                    let (start, end) = state.segments.get(index).map_or_else(
+                        || (index as i64 * 2_000_000, (index as i64 + 1) * 2_000_000),
+                        |segment| (segment.start_us, segment.end_us),
+                    );
+                    let color = editor
+                        .project
+                        .sources
+                        .keys()
+                        .position(|id| *id == clip.source)
+                        .unwrap_or(0);
+                    ClipVisual {
+                        name,
+                        color,
+                        start,
+                        end,
+                    }
                 })
                 .collect();
-            (media, clips, state.selected_source.clone())
+            (
+                media,
+                clips,
+                state.selected_source.clone(),
+                !state.segments.is_empty(),
+            )
         };
 
         self.rebuilding_bin.set(true);
@@ -872,6 +904,14 @@ impl App {
             text.append(&detail);
             row.set_tooltip_text(Some(&tooltip));
             row.set_child(Some(&text));
+            let drag_source = gtk::DragSource::builder()
+                .actions(gdk::DragAction::COPY)
+                .build();
+            let dragged_id = id.clone();
+            drag_source.connect_prepare(move |_, _, _| {
+                Some(gdk::ContentProvider::for_value(&dragged_id.to_value()))
+            });
+            row.add_controller(drag_source);
             self.ui.media.append(&row);
             if selected_source.as_ref() == Some(&id) {
                 self.ui.media.select_row(Some(&row));
@@ -879,21 +919,10 @@ impl App {
         }
         self.rebuilding_bin.set(false);
 
-        while let Some(child) = self.ui.lane.first_child() {
-            self.ui.lane.remove(&child);
-        }
-        if clips.is_empty() {
-            self.ui.lane.append(&self.ui.lane_hint);
-        }
-        for (index, (name, duration)) in clips.into_iter().enumerate() {
-            let button = widgets::clip_button(&name, duration);
-            let weak = Rc::downgrade(self);
-            button.connect_clicked(move |_| {
-                if let Some(app) = weak.upgrade() {
-                    app.select_clip(index);
-                }
-            });
-            self.ui.lane.append(&button);
+        self.ui.timeline.show_clips(clips, timed);
+        if timed {
+            let position = self.state.borrow().position;
+            self.request_preview(position, false);
         }
         self.title();
         self.controls();
@@ -957,26 +986,21 @@ impl App {
         };
         self.ui.placeholder.set_text(placeholder);
         self.ui
+            .placeholder
+            .set_tooltip_text(self.preview_error.borrow().as_deref());
+        self.ui
+            .play
+            .set_tooltip_text(self.preview_error.borrow().as_deref());
+        self.ui
             .play
             .set_label(if state.playing { "Pause" } else { "Play" });
-        self.ui.scale.set_sensitive(preview && valid_timeline);
-        self.ui
-            .scale
-            .set_range(0.0, seconds(state.total()).max(0.001));
-        self.ui.scale.set_value(seconds(state.position));
+        self.ui.timeline.select(selected);
+        self.ui.timeline.playhead(state.position, false);
         self.ui
             .clock(seconds(state.position), seconds(state.total()));
-        self.ui.trim_in.set_sensitive(!busy && selected.is_some());
-        self.ui.trim_out.set_sensitive(!busy && selected.is_some());
         self.ui
             .split
             .set_sensitive(!busy && state.at(state.position).is_some());
-        self.ui
-            .earlier
-            .set_sensitive(!busy && selected.is_some_and(|i| i > 0));
-        self.ui
-            .later
-            .set_sensitive(!busy && selected.is_some_and(|i| i + 1 < count));
         self.ui.remove.set_sensitive(!busy && selected.is_some());
         let detail = selected
             .and_then(|index| state.editor.project.clips.get(index))
@@ -999,15 +1023,6 @@ impl App {
             .unwrap_or("");
         self.ui.clip_details.set_text(label);
         self.ui.clip_details.set_tooltip_text(Some(label));
-        let mut child = self.ui.lane.first_child();
-        let mut index = 0;
-        while let Some(widget) = child {
-            child = widget.next_sibling();
-            if let Ok(button) = widget.downcast::<gtk::ToggleButton>() {
-                button.set_active(selected == Some(index));
-                index += 1;
-            }
-        }
     }
 }
 
@@ -1042,18 +1057,16 @@ impl App {
     }
 
     fn request_preview(&self, position: i64, playing: bool) {
-        if self.preview.borrow().is_none() {
-            return;
-        }
         let mut state = self.state.borrow_mut();
         state.position = position.clamp(0, state.total());
-        state.playing = playing;
-        state.pending = Some((state.position, playing));
+        let preview_available = self.preview.borrow().is_some() && !state.segments.is_empty();
+        state.playing = preview_available && playing;
+        state.pending = preview_available.then_some((state.position, playing));
         self.show_playhead(&state);
     }
 
     fn show_playhead(&self, state: &State) {
-        self.ui.scale.set_value(seconds(state.position));
+        self.ui.timeline.playhead(state.position, state.playing);
         self.ui
             .clock(seconds(state.position), seconds(state.total()));
         self.ui
@@ -1093,7 +1106,9 @@ impl App {
                         active.loaded = true;
                         active.ready = true;
                         self.ui.placeholder.set_visible(false);
-                        self.ui.canvas.queue_render();
+                        if !player.is_software() {
+                            self.ui.canvas.queue_render();
+                        }
                     }
                 }
                 Event::Ended { id, eof }
@@ -1139,7 +1154,17 @@ impl App {
             self.show_playhead(&state);
         }
         if player.wants_frame() {
-            self.ui.canvas.queue_render();
+            if player.is_software() {
+                let picture = &self.ui.software_canvas;
+                match player.draw_software(picture.width().max(1), picture.height().max(1)) {
+                    Ok(texture) => picture.set_paintable(Some(&texture)),
+                    Err(error) => self
+                        .ui
+                        .message(&format!("Preview rendering failed. {error:#}")),
+                }
+            } else {
+                self.ui.canvas.queue_render();
+            }
         }
     }
 

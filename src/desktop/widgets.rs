@@ -1,15 +1,20 @@
 use gtk::prelude::*;
 
+use crate::timeline::Timeline;
+
 pub struct Widgets {
     pub window: gtk::ApplicationWindow,
     pub canvas: gtk::GLArea,
+    pub software_canvas: gtk::Picture,
+    pub preview_stack: gtk::Stack,
     pub placeholder: gtk::Label,
     pub media: gtk::ListBox,
-    pub lane: gtk::Box,
-    pub lane_hint: gtk::Label,
+    pub timeline: Timeline,
+    pub zoom_out: gtk::Button,
+    pub zoom_in: gtk::Button,
+    pub zoom_fit: gtk::Button,
     pub clip_details: gtk::Label,
     pub clock: gtk::Label,
-    pub scale: gtk::Scale,
     pub status: gtk::Label,
     pub progress: gtk::ProgressBar,
     pub new: gtk::Button,
@@ -22,11 +27,7 @@ pub struct Widgets {
     pub append: gtk::Button,
     pub relink: gtk::Button,
     pub play: gtk::Button,
-    pub trim_in: gtk::Button,
-    pub trim_out: gtk::Button,
     pub split: gtk::Button,
-    pub earlier: gtk::Button,
-    pub later: gtk::Button,
     pub remove: gtk::Button,
     pub undo: gtk::Button,
     pub redo: gtk::Button,
@@ -43,7 +44,7 @@ impl Widgets {
         let dark = gtk::Settings::default()
             .is_some_and(|settings| settings.is_gtk_application_prefer_dark_theme());
         let provider = gtk::CssProvider::new();
-        provider.load_from_data(if dark { DARK_CSS } else { CSS });
+        provider.load_from_data(CSS);
         gtk::style_context_add_provider_for_display(
             &WidgetExt::display(&window),
             &provider,
@@ -85,6 +86,7 @@ impl Widgets {
         bin_footer.append(&relink);
         let bin = gtk::Box::new(gtk::Orientation::Vertical, 10);
         bin.set_width_request(258);
+        bin.set_hexpand(false);
         bin.append(&bin_header);
         bin.append(&media_scroll);
         bin.append(&bin_footer);
@@ -101,19 +103,26 @@ impl Widgets {
         let video = gtk::Overlay::new();
         video.add_css_class("video-frame");
         video.set_overflow(gtk::Overflow::Hidden);
-        video.set_child(Some(&canvas));
+        let software_canvas = gtk::Picture::builder()
+            .hexpand(true)
+            .vexpand(true)
+            .can_shrink(true)
+            .content_fit(gtk::ContentFit::Contain)
+            .build();
+        let preview_stack = gtk::Stack::new();
+        preview_stack.add_child(&canvas);
+        preview_stack.add_child(&software_canvas);
+        preview_stack.set_visible_child(&canvas);
+        video.set_child(Some(&preview_stack));
         video.add_overlay(&placeholder);
         let play = gtk::Button::with_label("Play");
         play.set_width_request(80);
         let clock = gtk::Label::new(None);
         clock.add_css_class("timecode");
-        let scale = gtk::Scale::with_range(gtk::Orientation::Horizontal, 0.0, 1.0, 0.001);
-        scale.set_draw_value(false);
-        scale.set_hexpand(true);
-        scale.set_tooltip_text(Some("Scrub the timeline"));
+        clock.set_hexpand(true);
+        clock.set_xalign(1.0);
         let playback = gtk::Box::new(gtk::Orientation::Horizontal, 10);
         playback.append(&play);
-        playback.append(&scale);
         playback.append(&clock);
         let preview = gtk::Box::new(gtk::Orientation::Vertical, 8);
         preview.set_hexpand(true);
@@ -124,27 +133,17 @@ impl Widgets {
         workspace.append(&bin);
         workspace.append(&preview);
 
-        let lane = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-        let lane_hint = gtk::Label::new(Some(
-            "Add clips from the media bin to assemble your sequence.",
-        ));
-        lane_hint.add_css_class("dim-label");
-        lane_hint.set_margin_start(12);
-        lane.append(&lane_hint);
-        let lane_scroll = gtk::ScrolledWindow::builder()
-            .child(&lane)
-            .hscrollbar_policy(gtk::PolicyType::Automatic)
-            .vscrollbar_policy(gtk::PolicyType::Never)
-            .min_content_height(72)
-            .build();
-        lane_scroll.add_css_class("timeline-lane");
+        let timeline = Timeline::new(dark);
         let undo = gtk::Button::with_label("Undo");
         let redo = gtk::Button::with_label("Redo");
-        let trim_in = gtk::Button::with_label("Trim in…");
-        let trim_out = gtk::Button::with_label("Trim out…");
+        let zoom_out = gtk::Button::with_label("−");
+        zoom_out.set_tooltip_text(Some("Zoom out (Ctrl + scroll)"));
+        let zoom_in = gtk::Button::with_label("+");
+        zoom_in.set_tooltip_text(Some("Zoom in (Ctrl + scroll)"));
+        let zoom_fit = gtk::Button::with_label("Fit");
+        zoom_fit.set_tooltip_text(Some("Fit the timeline to the window"));
         let split = gtk::Button::with_label("Split at playhead");
-        let earlier = gtk::Button::with_label("Move left");
-        let later = gtk::Button::with_label("Move right");
+        split.set_tooltip_text(Some("Split at the nearest safe cut (S)"));
         let remove = gtk::Button::with_label("Remove");
         let clip_details = gtk::Label::new(None);
         clip_details.set_xalign(0.0);
@@ -157,10 +156,15 @@ impl Widgets {
         timeline_title.append(&lane_heading);
         timeline_title.append(&undo);
         timeline_title.append(&redo);
+        let zoom = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        zoom.add_css_class("linked");
+        zoom.append(&zoom_out);
+        zoom.append(&zoom_fit);
+        zoom.append(&zoom_in);
+        timeline_title.append(&zoom);
         let tools = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-        for button in [&trim_in, &trim_out, &split, &earlier, &later, &remove] {
-            tools.append(button);
-        }
+        tools.append(&split);
+        tools.append(&remove);
         tools.append(&clip_details);
 
         let status = gtk::Label::new(Some("Import MP4 or MOV files to get started."));
@@ -183,7 +187,8 @@ impl Widgets {
         content.set_margin_end(14);
         content.append(&workspace);
         content.append(&timeline_title);
-        content.append(&lane_scroll);
+        content.append(&timeline.area);
+        content.append(&timeline.scrollbar);
         content.append(&tools);
         content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
         content.append(&footer);
@@ -192,13 +197,16 @@ impl Widgets {
         Self {
             window,
             canvas,
+            software_canvas,
+            preview_stack,
             placeholder,
             media,
-            lane,
-            lane_hint,
+            timeline,
+            zoom_out,
+            zoom_in,
+            zoom_fit,
             clip_details,
             clock,
-            scale,
             status,
             progress,
             new,
@@ -211,11 +219,7 @@ impl Widgets {
             append,
             relink,
             play,
-            trim_in,
-            trim_out,
             split,
-            earlier,
-            later,
             remove,
             undo,
             redo,
@@ -247,30 +251,6 @@ pub fn seconds(us: i64) -> f64 {
     us as f64 / 1_000_000.0
 }
 
-pub fn clip_button(name: &str, duration: Option<i64>) -> gtk::ToggleButton {
-    let button = gtk::ToggleButton::new();
-    button.add_css_class("timeline-clip");
-    let text = gtk::Box::new(gtk::Orientation::Vertical, 3);
-    let title = gtk::Label::new(Some(name));
-    title.set_xalign(0.0);
-    title.set_ellipsize(gtk::pango::EllipsizeMode::End);
-    title.add_css_class("heading");
-    text.append(&title);
-    let subtitle = duration
-        .map(|us| super::editor::timecode(seconds(us)))
-        .unwrap_or_else(|| "Unavailable".into());
-    let detail = gtk::Label::new(Some(&subtitle));
-    detail.set_xalign(0.0);
-    detail.add_css_class("dim-label");
-    text.append(&detail);
-    button.set_child(Some(&text));
-    button.set_width_request(
-        duration.map_or(155, |us| (seconds(us) * 90.0).clamp(130.0, 540.0) as i32),
-    );
-    button.set_tooltip_text(Some(name));
-    button
-}
-
 pub fn files(dialog: &gtk::FileDialog, label: &str, patterns: &[&str]) {
     let filter = gtk::FileFilter::new();
     filter.set_name(Some(label));
@@ -285,16 +265,6 @@ pub fn files(dialog: &gtk::FileDialog, label: &str, patterns: &[&str]) {
 const CSS: &str = "
 .video-frame { background-color: #10151c; border-radius: 8px; }
 .preview-placeholder { color: #d0d9e4; }
-.timeline-lane { background-color: alpha(currentColor, 0.07); border-radius: 6px; }
-.timeline-clip { border-radius: 0; border-right: 1px solid alpha(currentColor, 0.2); padding: 8px 11px; }
-.timeline-clip:checked { background: #d8e7fc; color: #15395f; box-shadow: inset 0 -3px #2d65a2; }
-.timecode { font-family: monospace; font-variant-numeric: tabular-nums; }
-";
-const DARK_CSS: &str = "
-.video-frame { background-color: #10151c; border-radius: 8px; }
-.preview-placeholder { color: #d0d9e4; }
-.timeline-lane { background-color: alpha(currentColor, 0.07); border-radius: 6px; }
-.timeline-clip { border-radius: 0; border-right: 1px solid alpha(currentColor, 0.2); padding: 8px 11px; }
-.timeline-clip:checked { background: #264c72; color: #edf5ff; box-shadow: inset 0 -3px #88b7eb; }
+.timeline { border-radius: 6px; }
 .timecode { font-family: monospace; font-variant-numeric: tabular-nums; }
 ";

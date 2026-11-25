@@ -21,8 +21,9 @@ jobs:
       - name: Install build and media dependencies
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends pkg-config libgtk-4-dev libmpv-dev libegl1 libgl1-mesa-dri ffmpeg weston dbus-x11
+          apt-get install -y --no-install-recommends pkg-config libgtk-4-dev libmpv-dev libegl1 libgl1-mesa-dri ffmpeg weston dbus-x11 locales
           rustup component add rustfmt clippy
+          localedef -i tr_TR -f UTF-8 tr_TR.UTF-8
       - name: Check formatting and lint
         run: |
           cargo fmt --check
@@ -46,4 +47,4 @@ jobs:
             sleep 0.1
           done
           test -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
-          dbus-run-session -- cargo test --locked --features desktop --bin spoolcut-desktop -- --ignored
+          LC_ALL=tr_TR.UTF-8 dbus-run-session -- cargo test --locked --features desktop --bin spoolcut-desktop -- --ignored

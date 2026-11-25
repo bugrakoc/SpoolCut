@@ -7,7 +7,7 @@ description = "Cut and join video without re-encoding"
 default-run = "spoolcut"
 
 [features]
-desktop = ["dep:gtk", "dep:libmpv2-sys", "dep:libloading", "dep:gl"]
+desktop = ["dep:gtk", "dep:libmpv2-sys", "dep:libloading", "dep:gl", "dep:libc"]
 
 [[bin]]
 name = "spoolcut-desktop"
@@ -24,3 +24,4 @@ gtk = { package = "gtk4", version = "0.10", features = ["v4_10"], optional = tru
 libmpv2-sys = { version = "4", optional = true }
 libloading = { version = "0.8", optional = true }
 gl = { version = "0.14", optional = true }
+libc = { version = "0.2", optional = true }

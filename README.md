@@ -13,10 +13,11 @@ cargo run --release --locked --features desktop --bin spoolcut-desktop
 
 libmpv needs H.264 and HEVC decoding support for preview. The FFmpeg build used for the tests also needs the libx264 and libx265 encoders.
 
-1. Import one or more MP4 or MOV files. Select a source and click **Add to timeline**.
-2. Select a clip to see its effective in and out points. Trim against the source's safe cut points, split at the safe point nearest the playhead, or move clips along the timeline.
-3. Scrub or play to preview the sequence. Save it as a JSON project, and use **Relink** if a source moves.
-4. Choose **Export MKV**. The status area shows progress through validation, copying, joining, and verification.
+1. Import one or more MP4 or MOV files. Drag a source onto the timeline or select it and click **Add to timeline**.
+2. Click the ruler to jump to the nearest safe keyframe or drag on it to scrub by frame. Use **−**, **+**, or Ctrl+scroll to zoom, and **Fit** to show the whole sequence.
+3. Drag clip bodies to reorder them and drag clip edges to trim. The timeline closes gaps after edits. Trimming and **Split at playhead** snap to safe video cut points.
+4. Save the sequence as a JSON project, and use **Relink** if a source moves.
+5. Choose **Export MKV**. The status area shows progress through validation, copying, joining, and verification.
 
 The preview plays decoded source audio. Export keeps only complete AAC packets, so you may hear a short difference at joins with unaligned audio boundaries.
 
@@ -65,4 +66,4 @@ Press Ctrl+C to cancel. SpoolCut checks the staged MKV before publishing it and 
 
 `cargo test --locked` generates fixtures using FFmpeg with the `libx264`, `libx265`, and `aac` encoders. It checks decoded frame order, video and audio packet hashes, output duration, A/V timing, unsafe cuts, incompatible streams, and cancellation. The fixtures cover B-frames, fractional and variable frame timing, and different source time bases.
 
-With an OpenGL-capable graphical session, run the desktop smoke test with `cargo test --locked --features desktop --bin spoolcut-desktop -- --ignored`.
+With a graphical session, run the desktop smoke test with `cargo test --locked --features desktop --bin spoolcut-desktop -- --ignored`.
