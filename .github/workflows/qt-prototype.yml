@@ -186,3 +186,28 @@ jobs:
             dist-qt-linux/*.tar.zst.sha256
           compression-level: 0
           if-no-files-found: error
+
+  compare:
+    runs-on: ubuntu-24.04
+    container: rust:1-trixie
+    timeout-minutes: 20
+    steps:
+      - run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git ca-certificates g++ cmake ninja-build pkg-config \
+            qt6-base-dev libgtk-4-dev libmpv-dev ffmpeg xvfb xauth xdotool python3-xlib dbus-x11
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Build both release editors
+        run: |
+          git worktree add --detach /tmp/spoolcut-gtk 39cb4eecef8914f187871aac2187f8f023d14e0d
+          cargo build --manifest-path /tmp/spoolcut-gtk/Cargo.toml --locked --release --features desktop --bins
+          cmake -S qt-prototype -B build-qt -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
+          cmake --build build-qt
+      - name: Compare CPU, memory, startup and scrubbing
+        run: |
+          dbus-run-session -- xvfb-run -a -s '-screen 0 1280x900x24' \
+            /usr/bin/python3 qt-prototype/tests/compare-linux.py /tmp/spoolcut-gtk/target/release/spoolcut-desktop \
+            build-qt/spoolcut-qt /tmp/spoolcut-gtk/target/release/spoolcut

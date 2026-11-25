@@ -52,10 +52,11 @@ public:
         if (!handle_)
             return tr("Could not create libmpv");
         const std::pair<const char *, const char *> options[] = {
-            {"config", "no"}, {"terminal", "no"}, {"vo", "libmpv"},
+            {"config", "no"}, {"terminal", "no"}, {"vo", "libmpv"}, {"profile", "fast"},
             {"hwdec", "no"}, {"idle", "yes"}, {"pause", "yes"},
             {"keep-open", "yes"}, {"load-scripts", "no"}, {"osc", "no"},
-            {"input-default-bindings", "no"}, {"audio-display", "no"}
+            {"input-default-bindings", "no"}, {"audio-display", "no"},
+            {"audio-file-auto", "no"}, {"sub-auto", "no"}, {"osd-level", "0"}
         };
         for (const auto &[name, value] : options) {
             if (const int result = mpv_set_option_string(handle_.get(), name, value); result < 0)
@@ -340,14 +341,28 @@ protected:
             gl->glClear(GL_COLOR_BUFFER_BIT);
             return;
         }
-        const QSize pixels = size() * devicePixelRatioF();
-        mpv_opengl_fbo fbo{static_cast<int>(defaultFramebufferObject()),
-                           pixels.width(), pixels.height(), 0};
+        // Qt binds the widget FBO and sets a viewport in device pixels.
+        // Use its actual viewport so fractional DPI uses the same rounding as Qt.
+        auto *gl = context()->functions();
+        GLint viewport[4]{};
+        gl->glGetIntegerv(GL_VIEWPORT, viewport);
+        if (viewport[2] <= 0 || viewport[3] <= 0)
+            return;
+        const GLuint target = defaultFramebufferObject();
+        mpv_opengl_fbo fbo{static_cast<int>(target), viewport[2], viewport[3], 0};
         int flip = 1;
+        int block = 0;
         mpv_render_param args[] = {
-            {MPV_RENDER_PARAM_OPENGL_FBO, &fbo}, {MPV_RENDER_PARAM_FLIP_Y, &flip}, {}
+            {MPV_RENDER_PARAM_OPENGL_FBO, &fbo}, {MPV_RENDER_PARAM_FLIP_Y, &flip},
+            {MPV_RENDER_PARAM_BLOCK_FOR_TARGET_TIME, &block}, {}
         };
+        gl->glDisable(GL_SCISSOR_TEST);
+        gl->glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
         const int result = surface_.render(args);
+        // libmpv can leave a different FBO bound. Qt still needs its own FBO
+        // to compose the widget and to read a framebuffer snapshot in tests.
+        gl->glBindFramebuffer(GL_FRAMEBUFFER, target);
+        gl->glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
         if (result < 0)
             emit surface_.rendererFailed(mpvError(result));
         else if (surface_.hasLoadedFrame())

@@ -141,7 +141,7 @@ def main():
     collect_sources(files, app, sources)
 
     fs = dist / "app.squashfs"
-    run("mksquashfs", app, fs, "-comp", "xz", "-noappend", "-processors", "2", "-root-owned")
+    run("mksquashfs", app, fs, "-comp", "zstd", "-noappend", "-processors", "2", "-root-owned")
     image = dist / "SpoolCut-Qt-Fedora-x86_64.AppImage"
     with image.open("wb") as stream:
         for part in (runtime, fs):
