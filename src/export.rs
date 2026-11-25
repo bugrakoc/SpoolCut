@@ -396,10 +396,14 @@ fn write_clip(media: &Media, clip: &PlannedClip, output: &Path, cancel: &AtomicB
             "-bsf:a",
             &select(&clip.audio_packets),
         ]);
-    // MP4 keeps the selected packets without copying the source AAC priming
-    // into a Matroska CodecDelay. The priming packets have already been excluded.
-    // Use a common track time base for concat, even when sources differ.
+    // Fragmented MP4 retains the AAC packet timing without carrying over
+    // source priming or inferring discard padding for a delayed audio start.
+    // Use one video time base for concat, even when sources differ.
     command.args([
+        "-movflags",
+        "+frag_keyframe+delay_moov+default_base_moof",
+        "-use_editlist",
+        "1",
         "-movie_timescale",
         "1000000",
         "-video_track_timescale",

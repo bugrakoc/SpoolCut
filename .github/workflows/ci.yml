@@ -99,7 +99,13 @@ jobs:
           GSK_RENDERER: cairo
           SPOOLCUT_PREVIEW: software
           GTK_A11Y: none
-        run: cargo test --locked --features desktop --bin spoolcut-desktop -- --ignored
+        run: cargo test --locked --features desktop --bin spoolcut-desktop -- --ignored --nocapture
+      - name: Exercise OpenGL selection and fallback
+        env:
+          GSK_RENDERER: cairo
+          SPOOLCUT_PREVIEW: opengl
+          GTK_A11Y: none
+        run: cargo test --locked --features desktop --bin spoolcut-desktop -- --ignored --nocapture
       - name: Build the portable ZIP and corresponding source archive
         if: github.event_name == 'pull_request' || startsWith(github.ref, 'refs/tags/v')
         run: |
