@@ -7,7 +7,22 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_AUTOMOC ON)
 find_package(Qt6 6.8 REQUIRED COMPONENTS Widgets OpenGLWidgets)
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(MPV REQUIRED IMPORTED_TARGET mpv>=2.3)
+if(WIN32)
+    # MSYS2's mpv.pc reports /ucrt64 paths. Resolve the header and import
+    # library from the native compiler prefix so CMake gets Windows paths.
+    pkg_check_modules(MPV REQUIRED mpv>=2.3)
+    get_filename_component(ucrt_bin "${CMAKE_CXX_COMPILER}" DIRECTORY)
+    get_filename_component(ucrt_prefix "${ucrt_bin}" DIRECTORY)
+    find_path(MPV_HEADER_DIR mpv/client.h HINTS "${ucrt_prefix}/include" NO_DEFAULT_PATH REQUIRED)
+    find_library(MPV_IMPORT_LIBRARY mpv HINTS "${ucrt_prefix}/lib" NO_DEFAULT_PATH REQUIRED)
+    add_library(mpv-native UNKNOWN IMPORTED)
+    set_target_properties(mpv-native PROPERTIES IMPORTED_LOCATION "${MPV_IMPORT_LIBRARY}"
+        INTERFACE_INCLUDE_DIRECTORIES "${MPV_HEADER_DIR}")
+    set(mpv_target mpv-native)
+else()
+    pkg_check_modules(MPV REQUIRED IMPORTED_TARGET mpv>=2.3)
+    set(mpv_target PkgConfig::MPV)
+endif()
 
 option(SPOOLCUT_SANITIZERS "Enable ASan and UBSan with GCC/Clang" OFF)
 if(SPOOLCUT_SANITIZERS)
@@ -19,7 +34,7 @@ if(SPOOLCUT_SANITIZERS)
 endif()
 
 add_library(prototype-widgets STATIC preview.cpp timeline.cpp window.cpp)
-target_link_libraries(prototype-widgets PUBLIC Qt6::Widgets Qt6::OpenGLWidgets PkgConfig::MPV)
+target_link_libraries(prototype-widgets PUBLIC Qt6::Widgets Qt6::OpenGLWidgets ${mpv_target})
 target_include_directories(prototype-widgets PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_options(prototype-widgets PRIVATE -Wall -Wextra -Wpedantic)
 
