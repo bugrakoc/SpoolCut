@@ -1,5 +1,6 @@
 mod editor;
 mod interactive;
+mod launcher;
 mod preview;
 mod timeline;
 mod widgets;
@@ -25,6 +26,8 @@ use editor::{Editor, IndexedMedia, Segment, source_name, timecode};
 use preview::{Event, Preview};
 use timeline::{ClipVisual, Draft, Edge, Hit};
 use widgets::{Widgets, seconds};
+
+const APPLICATION_ID: &str = "io.github.bugrakoc.SpoolCut";
 
 #[derive(Default)]
 struct State {
@@ -112,10 +115,14 @@ fn initialize_locale() {
 fn main() -> glib::ExitCode {
     initialize_locale();
     glib::set_application_name("SpoolCut");
-    let application = gtk::Application::new(
-        Some("io.github.bugrakoc.SpoolCut"),
-        gio::ApplicationFlags::HANDLES_OPEN,
-    );
+    glib::set_prgname(Some(APPLICATION_ID));
+    let application =
+        gtk::Application::new(Some(APPLICATION_ID), gio::ApplicationFlags::HANDLES_OPEN);
+    application.connect_startup(|_| {
+        if let Err(error) = launcher::register_appimage() {
+            eprintln!("Could not register the SpoolCut desktop launcher: {error:#}");
+        }
+    });
     application.connect_activate(|application| {
         if let Some(window) = application.active_window() {
             window.present();
@@ -232,6 +239,10 @@ impl App {
             if app.state.borrow().job.is_some() {
                 app.cancel_job();
                 return glib::Propagation::Stop;
+            }
+            if !app.state.borrow().editor.dirty() {
+                app.closed.set(true);
+                return glib::Propagation::Proceed;
             }
             app.confirm_discard(|app| {
                 app.closed.set(true);
@@ -1112,7 +1123,8 @@ fn media_details(info: &spoolcut::MediaInfo) -> String {
             format!("{} fps", rate.trim_end_matches('0').trim_end_matches('.'))
         },
     );
-    format!("{resolution} · {frame_rate}")
+    let codec = info.video_codec.to_uppercase();
+    format!("{resolution} · {codec} · {frame_rate}")
 }
 
 impl State {

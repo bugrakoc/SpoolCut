@@ -154,7 +154,7 @@ fn desktop_edit_preview_persist_export() {
         .unwrap()
         .downcast::<gtk::Label>()
         .unwrap();
-    assert_eq!(metadata.text(), "160 × 96 · 25 fps");
+    assert_eq!(metadata.text(), "160 × 96 · H264 · 25 fps");
 
     // Transport shortcuts still work when a toolbar button has focus.
     assert!(app.ui.append.grab_focus());
@@ -329,6 +329,8 @@ fn desktop_edit_preview_persist_export() {
     wait_for("relink", || app.state.borrow().job.is_none());
     assert!(app.ui.export.is_sensitive(), "{}", app.ui.status.text());
 
-    app.closed.set(true);
+    app.save_to(scratch.path().join("relinked.json"));
     app.ui.window.close();
+    assert!(app.closed.get());
+    assert!(!app.ui.window.is_visible());
 }

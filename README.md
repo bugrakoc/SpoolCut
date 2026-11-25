@@ -1,8 +1,12 @@
 # SpoolCut
 
+<img src="assets/io.github.bugrakoc.SpoolCut.png" alt="SpoolCut icon" width="96" height="96">
+
 Cut and join video without re-encoding. SpoolCut has a GTK desktop editor and a command-line tool on Linux.
 
 ## Desktop editor
+
+The AppImage adds a SpoolCut launcher to your application menu on first run so desktop panels can find its icon. If you move the AppImage, run it from the new location to update its launcher.
 
 Build with a current stable Rust toolchain, GTK 4.10 or newer, and libmpv from mpv 0.38 or newer. On recent Fedora releases, install the build dependencies and FFmpeg tools with:
 

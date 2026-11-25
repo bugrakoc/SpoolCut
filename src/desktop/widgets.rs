@@ -1,6 +1,6 @@
-use gtk::prelude::*;
+use gtk::{cairo, gdk, glib, prelude::*};
 
-use crate::timeline::Timeline;
+use crate::{APPLICATION_ID, launcher::APP_ICON, timeline::Timeline};
 
 pub struct Widgets {
     pub window: gtk::ApplicationWindow,
@@ -38,6 +38,7 @@ impl Widgets {
         let window = gtk::ApplicationWindow::builder()
             .application(application)
             .title("SpoolCut")
+            .icon_name(APPLICATION_ID)
             .default_width(1120)
             .default_height(760)
             .build();
@@ -58,11 +59,13 @@ impl Widgets {
         let export = gtk::Button::with_label("Export MKV…");
         export.add_css_class("suggested-action");
         let header = gtk::HeaderBar::new();
-        header.set_decoration_layout(Some(":minimize,maximize,close"));
+        header.set_show_title_buttons(false);
+        header.set_title_widget(Some(&window_title(&window)));
         header.pack_start(&new);
         header.pack_start(&open);
         header.pack_start(&save);
         header.pack_start(&save_as);
+        header.pack_end(&window_controls(&window));
         header.pack_end(&export);
         window.set_titlebar(Some(&header));
 
@@ -139,6 +142,7 @@ impl Widgets {
             .position(258)
             .vexpand(true)
             .build();
+        workspace.add_css_class("media-workspace");
 
         let timeline = Timeline::new(dark);
         let undo = gtk::Button::with_label("Undo");
@@ -249,6 +253,130 @@ impl Widgets {
     }
 }
 
+#[derive(Clone, Copy)]
+enum WindowControl {
+    Minimize,
+    Maximize,
+    Close,
+}
+
+fn window_title(window: &gtk::ApplicationWindow) -> gtk::Box {
+    let texture = gdk::Texture::from_bytes(&glib::Bytes::from_static(APP_ICON))
+        .expect("the embedded SpoolCut icon is a valid PNG");
+    let icon = gtk::Image::from_paintable(Some(&texture));
+    icon.set_pixel_size(26);
+    window.connect_realize(move |window| {
+        if let Some(toplevel) = window.surface().and_downcast::<gdk::Toplevel>() {
+            toplevel.set_icon_list(std::slice::from_ref(&texture));
+        }
+    });
+    let label = gtk::Label::builder()
+        .ellipsize(gtk::pango::EllipsizeMode::End)
+        .build();
+    label.add_css_class("title");
+    window
+        .bind_property("title", &label, "label")
+        .sync_create()
+        .build();
+    let title = gtk::Box::new(gtk::Orientation::Horizontal, 7);
+    title.append(&icon);
+    title.append(&label);
+    title
+}
+
+fn window_controls(window: &gtk::ApplicationWindow) -> gtk::Box {
+    let controls = gtk::Box::new(gtk::Orientation::Horizontal, 3);
+    for (kind, label, action) in [
+        (WindowControl::Minimize, "Minimize", "window.minimize"),
+        (
+            WindowControl::Maximize,
+            "Maximize",
+            "window.toggle-maximized",
+        ),
+        (WindowControl::Close, "Close", "window.close"),
+    ] {
+        let glyph = gtk::DrawingArea::builder()
+            .content_width(14)
+            .content_height(14)
+            .halign(gtk::Align::Center)
+            .valign(gtk::Align::Center)
+            .build();
+        let button = gtk::Button::builder()
+            .child(&glyph)
+            .action_name(action)
+            .width_request(32)
+            .build();
+        button.add_css_class("flat");
+        label_window_button(&button, label);
+        let weak_window = window.downgrade();
+        glyph.set_draw_func(move |glyph, cr, width, height| {
+            let maximized = weak_window
+                .upgrade()
+                .is_some_and(|window| window.is_maximized());
+            let color = glyph.color();
+            cr.set_source_rgba(
+                f64::from(color.red()),
+                f64::from(color.green()),
+                f64::from(color.blue()),
+                f64::from(color.alpha()),
+            );
+            cr.translate(f64::from(width) / 2.0, f64::from(height) / 2.0);
+            draw_window_glyph(cr, kind, maximized);
+        });
+        if matches!(kind, WindowControl::Maximize) {
+            let weak_button = button.downgrade();
+            window.connect_maximized_notify(move |window| {
+                if let Some(button) = weak_button.upgrade() {
+                    let label = if window.is_maximized() {
+                        "Restore"
+                    } else {
+                        "Maximize"
+                    };
+                    label_window_button(&button, label);
+                    if let Some(glyph) = button.child() {
+                        glyph.queue_draw();
+                    }
+                }
+            });
+        }
+        controls.append(&button);
+    }
+    controls
+}
+
+fn label_window_button(button: &gtk::Button, label: &str) {
+    button.set_tooltip_text(Some(label));
+    button.update_property(&[gtk::accessible::Property::Label(label)]);
+}
+
+fn draw_window_glyph(cr: &cairo::Context, kind: WindowControl, maximized: bool) {
+    cr.set_line_width(1.5);
+    cr.set_line_cap(cairo::LineCap::Round);
+    cr.set_line_join(cairo::LineJoin::Round);
+    match kind {
+        WindowControl::Minimize => {
+            cr.move_to(-4.5, 3.0);
+            cr.line_to(4.5, 3.0);
+        }
+        WindowControl::Maximize if maximized => {
+            cr.rectangle(-5.0, -2.0, 7.0, 7.0);
+            cr.move_to(-2.0, -2.0);
+            cr.line_to(-2.0, -5.0);
+            cr.line_to(5.0, -5.0);
+            cr.line_to(5.0, 2.0);
+            cr.line_to(2.0, 2.0);
+        }
+        WindowControl::Maximize => cr.rectangle(-4.5, -4.5, 9.0, 9.0),
+        WindowControl::Close => {
+            cr.move_to(-4.0, -4.0);
+            cr.line_to(4.0, 4.0);
+            cr.move_to(4.0, -4.0);
+            cr.line_to(-4.0, 4.0);
+        }
+    }
+    let _ = cr.stroke();
+}
+
 fn heading(text: &str) -> gtk::Label {
     let label = gtk::Label::new(Some(text));
     label.set_xalign(0.0);
@@ -274,6 +402,11 @@ pub fn files(dialog: &gtk::FileDialog, label: &str, patterns: &[&str]) {
 const CSS: &str = "
 .video-frame { background-color: #10151c; border-radius: 8px; }
 .preview-placeholder { color: #d0d9e4; }
+.media-workspace > separator {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+}
 .timeline { border-radius: 6px; }
 .timecode { font-family: monospace; font-variant-numeric: tabular-nums; }
 ";
