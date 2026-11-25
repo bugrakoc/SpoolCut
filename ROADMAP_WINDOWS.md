@@ -8,28 +8,29 @@ project JSON, packet verification and lossless export rules are shared.
 
 - [x] Audit main and the original prototype, Fedora desktop and timeline branches.
   Main contains the current desktop editor and taskbar fix.
-- [ ] Resolve FFmpeg and ffprobe from explicit settings, the application bundle
+- [x] Resolve FFmpeg and ffprobe from explicit settings, the application bundle
   or PATH. Run the tools without a console window and wait for a cancelled child
   before removing its temporary files.
-- [ ] Check source identity on both platforms and preserve atomic publication
+- [x] Check source identity on both platforms and preserve atomic publication
   when an output appears during export. Test Unicode, spaces and long paths.
-- [ ] Verify the UCRT64 Rust, GCC, pkg-config, GTK and libmpv combination and run
+- [x] Verify the UCRT64 Rust, GCC, pkg-config, GTK and libmpv combination and run
   the real H.264/HEVC export suite on the native Windows runner.
 
 ## 2. Desktop and preview
 
-- [ ] Exercise editing, shortcuts, undo/redo, project reopen and relinking on
+- [x] Exercise editing, shortcuts, undo/redo, project reopen and relinking on
   Windows with the libmpv software renderer.
-- [ ] Select the GL function resolver for the current GTK graphics context and
-  retain software fallback. Test rapid seeking, source switches, repeated
-  startup/shutdown and decoded pixels through both render paths.
+- [x] Isolate Linux EGL and Windows WGL lookup. Exercise rapid seeking, source
+  switches, repeated startup/shutdown and decoded pixels in the desktop smoke test.
+- [ ] Validate WGL rendering on a Windows system with accelerated OpenGL.
 - [ ] Verify Windows decorations, taskbar and Explorer icon and scaling at
   100%, 150% and 200%, including a window moved between monitors.
 
 ## 3. Portable distribution
 
-- [ ] Build a relocatable ZIP with the app, FFmpeg, ffprobe, Windows DLL closure,
-  GTK resources and notices. Verify the package with an empty development PATH.
+- [x] Add CI packaging for the app, FFmpeg, ffprobe, Windows DLL closure, GTK
+  resources and notices.
+- [ ] Verify the relocated ZIP on a Windows runner with the development PATH removed.
 - [ ] Record the exact inputs for redistribution and make matching corresponding
   source, build recipes and patches available with the binaries.
 - [ ] Unzip and run on a clean Windows 11 VM without developer tools installed.
@@ -38,7 +39,8 @@ project JSON, packet verification and lossless export rules are shared.
 
 ## 4. Release verification
 
-- [ ] Run native CI and the existing Fedora/Wayland validation.
+- [x] Run the native Windows and Linux Wayland smoke tests in CI.
+- [ ] Repeat the editor and export tests on Fedora hardware.
 - [ ] Record the results of the Windows VM checklist, including the renderer
   used. Release after verifying the package and resolving blocking failures.
 

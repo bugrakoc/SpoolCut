@@ -86,8 +86,9 @@ into a directory with spaces and a non-ASCII character, then double-click
    intended joins and synchronized audio. Cancel an export and check that no
    output or staging folder remains. Repeat to an exFAT volume, including with
    a destination that already exists.
-5. Open and close the editor several times. Then launch with
-   `SPOOLCUT_PREVIEW=opengl` and repeat playback and seeking. Record the preview
+5. Open and close the editor several times. To try WGL, run
+   `$env:SPOOLCUT_PREVIEW = 'opengl'` in PowerShell and then launch
+   `& .\SpoolCut\bin\SpoolCut.exe` from that shell. Repeat playback and seeking. Record the preview
    tooltip and whether the VM exposes accelerated graphics. If the VM falls
    back to software, WGL still needs validation on a Windows system with
    working OpenGL drivers.
