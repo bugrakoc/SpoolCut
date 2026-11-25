@@ -2,6 +2,7 @@
 """Exercise the Rust regression fixtures and compare JSON and exported packets."""
 
 import argparse
+import contextlib
 import json
 import os
 from pathlib import Path
@@ -229,10 +230,32 @@ def rejected(root, clis):
     assert not list(root.glob(".spoolcut-*"))
 
 
+@contextlib.contextmanager
+def interrupt_process(child):
+    if os.name != "nt":
+        child.send_signal(signal.SIGINT)
+        yield
+        return
+
+    # Attach only to the child's private console. Sending Ctrl+C to the
+    # runner's shared console would also signal the test harness and CTest.
+    import ctypes
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.FreeConsole()
+    if not kernel.AttachConsole(child.pid):
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        if not kernel.SetConsoleCtrlHandler(None, True):
+            raise ctypes.WinError(ctypes.get_last_error())
+        if not kernel.GenerateConsoleCtrlEvent(0, 0):  # CTRL_C_EVENT, all processes on this console
+            raise ctypes.WinError(ctypes.get_last_error())
+        yield
+    finally:
+        kernel.FreeConsole()
+
+
 def interrupt(root, clis):
-    if os.name == "nt":
-        print("Console Ctrl+C exercise requires a console; Windows CTest covers cancellation via the core API.")
-        return 77
     a = root / "a.mp4"
     fixture(a, "avc", 0, 12800)
     info = unanimous(clis, "inspect", a)
@@ -240,15 +263,17 @@ def interrupt(root, clis):
     save_project(project, {"a": a.name}, [clip("a", *info["safe_in_pts"][:2])] * 25)
     output = root / "interrupt.mkv"
     for cli in clis:
-        with subprocess.Popen([cli, "export", project, output], stdout=subprocess.PIPE, stderr=subprocess.PIPE) as child:
+        flags = subprocess.CREATE_NEW_CONSOLE if os.name == "nt" else 0
+        with subprocess.Popen([cli, "export", project, output], stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE, creationflags=flags) as child:
             try:
                 deadline = time.monotonic() + 12
                 while not list(root.glob(".spoolcut-*")) and child.poll() is None:
                     assert time.monotonic() < deadline, f"{cli} did not reach staging"
                     time.sleep(0.005)
                 assert child.poll() is None and list(root.glob(".spoolcut-*"))
-                child.send_signal(signal.SIGINT)
-                _, errors = child.communicate(timeout=10)
+                with interrupt_process(child):
+                    _, errors = child.communicate(timeout=10)
                 assert child.returncode == 130 and b"cancelled" in errors, (cli, child.returncode, errors)
             finally:
                 if child.poll() is None:

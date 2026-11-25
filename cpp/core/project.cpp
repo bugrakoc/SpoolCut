@@ -5,6 +5,7 @@
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QScopeGuard>
 #include <QTemporaryFile>
 
 #include <charconv>
@@ -179,13 +180,24 @@ void Project::save(const QString &path) const
             entries.append(clipJson(clip));
         const auto bytes = QJsonDocument(QJsonObject{
             {QStringLiteral("sources"), sourcePaths}, {QStringLiteral("clips"), entries}}).toJson();
-        QTemporaryFile staged(QDir(QFileInfo(path).absolutePath()).filePath(QStringLiteral(".spoolcut-project-XXXXXX")));
-        const bool opened = staged.open();
-        detail::require(opened, staged.errorString());
-        const bool written = staged.write(bytes) == bytes.size() && staged.flush();
-        detail::require(written, staged.errorString());
-        staged.close();
-        detail::replaceProject(staged.fileName(), path);
+        QString stagedPath;
+        const auto cleanup = qScopeGuard([&] {
+            if (!stagedPath.isEmpty())
+                QFile::remove(stagedPath);
+        });
+        {
+            QTemporaryFile staged(QDir(QFileInfo(path).absolutePath()).filePath(
+                QStringLiteral(".spoolcut-project-XXXXXX")));
+            const bool opened = staged.open();
+            detail::require(opened, staged.errorString());
+            const bool written = staged.write(bytes) == bytes.size() && staged.flush();
+            detail::require(written, staged.errorString());
+            stagedPath = staged.fileName();
+            staged.setAutoRemove(false);
+            // QTemporaryFile::close() keeps the native handle open for reuse.
+            // Destroy it here so Windows can move the staged file.
+        }
+        detail::replaceProject(stagedPath, path);
     });
 }
 
