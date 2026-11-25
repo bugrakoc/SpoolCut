@@ -349,7 +349,7 @@ Window::Window()
         report(message);
     });
     connect(preview_, &Preview::positionChanged, this, [this](double sourceTime) {
-        if (!playing_ || !current_)
+        if (!playing_ || !current_ || !std::isfinite(sourceTime))
             return;
         const auto &segment = segments_[*current_];
         positionUs_ = segment.startUs + timelineTime(sourceTime - segment.sourceStart, segment.endUs - segment.startUs);
@@ -650,7 +650,7 @@ void Window::refresh()
         auto tooltip = path;
         if (result) {
             if (const auto *source = std::get_if<IndexedSource>(result)) {
-                const auto info = source->info();
+                const auto &info = source->info();
                 const auto rate = info.averageFrameRate
                                       ? tr("%1 fps").arg(QString::number(info.averageFrameRate->seconds(1), 'g', 5))
                                       : tr("Unknown frame rate");
@@ -951,7 +951,7 @@ void Window::keyframe(bool forward)
     }
 }
 
-void Window::seek(qint64 time, bool playing)
+void Window::seek(qint64 time, bool playing, bool verifySource)
 {
     if (cancel_ || segments_.empty())
         return;
@@ -967,7 +967,8 @@ void Window::seek(qint64 time, bool playing)
         if (current_ == row && frame >= 0) {
             preview_->seek(frame);
         } else {
-            index.checkSource();
+            if (verifySource)
+                index.checkSource();
             current_ = row;
             preview_->open(segment.path, frame, playing, segment.sourceEnd);
         }
@@ -1010,9 +1011,10 @@ void Window::advance()
     if (!playing_ || !current_)
         return;
     const auto next = *current_ + 1;
-    if (next < segments_.size())
-        seek(segments_[next].startUs, true);
-    else {
+    if (next < segments_.size()) {
+        // Playback errors recheck the path when libmpv cannot load the next clip.
+        seek(segments_[next].startUs, true, /*verifySource=*/false);
+    } else {
         positionUs_ = segments_.back().endUs;
         timeline_->setPosition(seconds(positionUs_), true);
         updateClock();

@@ -198,7 +198,12 @@ def package(prefix, executable, output, scratch):
     shutil.copy2("LICENSE", bundle)
     shutil.copy2("packaging/windows/PORTABLE.txt", bundle / "Read me.txt")
     revision = run("git", "rev-parse", "HEAD", capture=True).decode()
-    (bundle / "source-revision.txt").write_text(revision, encoding="utf-8")
+    build_config = run(str(bin_dir / "ffmpeg.exe"), "-hide_banner", "-buildconf", capture=True).decode()
+    if "--enable-nonfree" in build_config:
+        raise RuntimeError("Cannot redistribute this FFmpeg configuration")
+    for directory in (bundle, sources):
+        (directory / "source-revision.txt").write_text(revision, encoding="utf-8")
+        (directory / "FFmpeg-buildconf.txt").write_text(build_config, encoding="utf-8")
     source_archive = output / (sources.name + ".tar.zst")
     run(str(msys / "usr/bin/tar.exe"), "--force-local", "--zstd", "-cf",
         source_archive.as_posix(), "-C", scratch.as_posix(), sources.name)

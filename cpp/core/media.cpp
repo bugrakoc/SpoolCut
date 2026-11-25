@@ -325,6 +325,7 @@ MediaInfo inspect(const QString &path, const Cancel &cancel)
 
 struct IndexedSource::Data {
     detail::Media media;
+    MediaInfo info;
     std::vector<qint64> framePts;
 };
 
@@ -336,10 +337,11 @@ IndexedSource IndexedSource::open(const QString &path, const Cancel &cancel)
     for (const auto &packet : media.videoPackets)
         points.push_back(*packet.pts);
     std::sort(points.begin(), points.end());
-    return IndexedSource(std::make_shared<Data>(Data{std::move(media), std::move(points)}));
+    auto info = media.info();
+    return IndexedSource(std::make_shared<Data>(Data{std::move(media), std::move(info), std::move(points)}));
 }
 
-MediaInfo IndexedSource::info() const { return data_->media.info(); }
+const MediaInfo &IndexedSource::info() const { return data_->info; }
 PlannedClip IndexedSource::planClip(const Clip &clip) const { return detail::planClip(data_->media, clip, 0); }
 void IndexedSource::checkSource() const { data_->media.checkSource(); }
 

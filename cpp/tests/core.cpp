@@ -71,6 +71,7 @@ void exactProject(const QTemporaryDir &scratch)
         R"({"sources":{},"clips":[{"source":"A","in_pts":0,"in_pts":1,"out_pts":2}]})",
         R"({"sources":{},"clips":[{"source":"A","in_pts":0,"out_pts":2,"other":0}]})",
         R"({"sources":{},"clips":[],"clips":[]})",
+        R"({"sources":{"A":"\uD800.mov"},"clips":[]})",
         R"({"sources":{},"clips":[],})",
         R"({"sources":{},"clips":[]} [])",
     };

@@ -1,6 +1,6 @@
 # SpoolCut — C++ / Qt 6 migration roadmap
 
-Status. Milestones C and D passed hosted verification. The maintainer tested Qt 0.2.0 on Fedora KDE and Windows 11 and found issues in duration verification, missing-media display, and Fedora software preview. The 0.2.1 follow-up addresses those reports and restores timeline and media-bin styling from the GTK editor. See [migration evidence](docs/CPP_QT_STATUS.md) for retest results and open checks.
+The C++ core and Qt desktop passed the 0.2.2 maintainer test on Fedora KDE Wayland and Windows 11. The 0.3.0 candidate uses CMake across the production desktop and CLI. The [migration evidence](docs/CPP_QT_STATUS.md) records earlier tests, audit findings and the final acceptance gate.
 
 ## 1. Decision and scope
 
@@ -12,10 +12,10 @@ Non-goals: new editing features, new codecs or containers, smart rendering, tran
 
 ## 2. Baseline and branch policy
 
-- Rust reference: [main at 39cb4ee](https://github.com/bugrakoc/SpoolCut/tree/39cb4eecef8914f187871aac2187f8f023d14e0d), including the merged Windows port. The `cpp-qt` branch incorporates this baseline; keep this exact commit available for differential testing.
-- Windows reference: [PR #3](https://github.com/bugrakoc/SpoolCut/pull/3) was merged into main on 25 November 2026 at `39cb4eecef8914f187871aac2187f8f023d14e0d`. Audit the integrated implementation, [ROADMAP_WINDOWS.md](ROADMAP_WINDOWS.md), [docs/WINDOWS.md](docs/WINDOWS.md), CI, tests and packaging. Preserve relevant behavior and fixes, not GTK-specific workarounds. No separate Windows-branch merge is needed. Merged does not mean all manual checks passed: accelerated preview, fractional DPI scaling, outstanding package tests and HEVC Main 10 player compatibility remain baseline verification items.
+- Rust reference: [main at 39cb4ee](https://github.com/bugrakoc/SpoolCut/tree/39cb4eecef8914f187871aac2187f8f023d14e0d), including the merged Windows port. The [rust-gtk-baseline tag](https://github.com/bugrakoc/SpoolCut/tree/rust-gtk-baseline) preserves this exact commit for differential testing.
+- Windows reference: [PR #3](https://github.com/bugrakoc/SpoolCut/pull/3) was merged into main on 25 November 2026 at `39cb4eecef8914f187871aac2187f8f023d14e0d`. Audit the integrated implementation, the [archived Windows guide](https://github.com/bugrakoc/SpoolCut/blob/rust-gtk-baseline/docs/WINDOWS.md), CI, tests and packaging. Preserve relevant behavior and fixes, not GTK-specific workarounds. No separate Windows-branch merge is needed. Merged does not mean all manual checks passed: accelerated preview, fractional DPI scaling, outstanding package tests and HEVC Main 10 player compatibility remain baseline verification items.
 - All migration work goes to `cpp-qt`. Do not change main, force-push, merge the migration into main, change the license, or publish releases without maintainer approval.
-- Keep the Rust code and fixtures runnable as a behavioral reference until parity is demonstrated. Temporary coexistence is for validation only, not a permanent dual-language architecture. Preserve history; remove obsolete Rust/GTK build paths from the replacement branch only at the final cleanup checkpoint.
+- Build the pinned Rust/GTK reference from Git history for comparison. CMake builds the production C++/Qt targets.
 - Document actual commits, toolchain versions, tests, platform results and unresolved issues in this file or a linked migration status file. Mark a checkbox complete only with evidence.
 
 ## 3. Target architecture
@@ -82,14 +82,14 @@ relinking fixes and a package smoke test on both platforms.
 - [x] Maintain reproducible documented Linux and Windows builds; use a coherent compiler/ABI/runtime for Qt/libmpv and a supported dependency source. Avoid hardcoded developer paths. Use CMake presets if they simplify the workflow.
 - [x] Run core/export regression tests and desktop smoke tests on both targets. Use actual FFmpeg encoders for generated fixtures. Exercise packaged executables in clean/relocated environments. Record skipped tests and actual renderer.
 - [ ] Include Qt platform plugins (Wayland/X11 as appropriate; Windows), image/icon plugins as needed, libmpv, FFmpeg/ffprobe and compatible dependencies. Check executable discovery, non-ASCII paths, spaces, existing/locked outputs, different drives, supported and unsupported filesystems.
-- [ ] Test Fedora KDE Wayland with accelerated preview and Windows 11 x86-64 with clean VM and real accelerated graphics where available; include 100/150/200% scaling and monitor movement. Require maintainer confirmation for hardware cases CI cannot validate.
+- [ ] Retest the final packages on Fedora KDE Wayland and Windows 11. Earlier maintainer tests covered NVIDIA OpenGL on Fedora, Windows software preview and 100%, 150% and 200% scaling. Physical Windows OpenGL and mixed-DPI monitors are deferred.
 - [ ] Preserve GPLv3 licensing. Verify redistribution terms for exact Qt modules, FFmpeg, libmpv and every bundled dependency, provide required notices and corresponding source/build recipes as applicable. Prefer redistributable dynamic Qt builds and avoid proprietary-only dependencies.
 - [x] Document macOS boundaries (file identity/publication, paths, .app layout, Qt plugins, graphics backend, signing/notarization). Do not implement or claim macOS support yet.
-- [ ] Record a feature parity matrix, known limitations and comparative performance evidence. Update README, build instructions and general roadmap to the approved stack. Remove obsolete Rust/GTK production build paths only after parity; preserve reference commit and regression fixtures.
-- [ ] Open a reviewable PR to main when all required gates pass. Do not merge or release without explicit maintainer approval.
+- [x] Record feature parity, limitations and hosted performance measurements. Document the production build and packaging. Preserve the Rust reference in Git and retain the differential fixtures.
+- [ ] Finish CI for the exact PR head and obtain maintainer acceptance of both packages. After acceptance, verify the merge revision and publish 0.3.0.
 
 ## 5. Release acceptance
 
 The migrated version must reproduce the verified reference's safe cuts, packet-copy behavior, project interoperability and existing functionality. There must be no silent re-encoding, no unexplained regression in timing/verification, no new corruption or destructive overwrite risk, and no known blocking issue in native Fedora/Windows packages. All required CI and manual checks must be evidenced. Resolve significant performance regressions or obtain explicit approval for documented tradeoffs. A successful prototype alone is not a release candidate.
 
-At the end of each milestone, commit the work on `cpp-qt`, update progress, provide tested build/artifact instructions, report precise failures and untested items, and stop for review at the prototype and final release gates.
+The final gate is the maintainer's confirmation of the 0.3.0 candidate. The migration PR records the exact revision, CI runs, downloads and platform checklist. The production release is built from the verified merge on `main`.

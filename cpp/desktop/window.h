@@ -71,7 +71,7 @@ private:
     void history(bool redo);
     void keyframe(bool forward);
     std::optional<size_t> segmentAt(qint64 time) const;
-    void seek(qint64 time, bool playing);
+    void seek(qint64 time, bool playing, bool verifySource = true);
     void setPlaying(bool playing);
     void advance();
 

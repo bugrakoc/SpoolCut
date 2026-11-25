@@ -97,7 +97,9 @@ private:
                 const auto wrapped = '[' + data_.mid(start, pos_ - start) + ']';
                 const auto document = QJsonDocument::fromJson(wrapped, &error);
                 detail::require(error.error == QJsonParseError::NoError, error.errorString());
-                return document.array()[0].toString();
+                const auto value = document.array()[0].toString();
+                detail::require(value.isValidUtf16(), QStringLiteral("invalid Unicode in project string"));
+                return value;
             }
         }
         throw Error(QStringLiteral("unterminated JSON string"));

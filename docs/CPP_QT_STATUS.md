@@ -23,7 +23,8 @@ mixed-DPI monitor movement and further hardware benchmarking are deferred.
 Relinking updates the editor in place. Qt 6.4 and newer can recreate a shown
 top-level native window when the first `QOpenGLWidget` is added. In 0.2.2, a
 project opened with a missing clip could have no preview renderer until relinking
-made its first frame available. This was the native window recreation path.
+made its first frame available. That can replace the native surface while the
+application process and project remain live.
 See [Qt's QOpenGLWidget documentation](https://doc.qt.io/qt-6/qopenglwidget.html).
 
 The GL widget now belongs to the initial window hierarchy when OpenGL is
@@ -57,7 +58,7 @@ Windows Rust tests, forced software and OpenGL selection/fallback. Packaging
 was skipped on that main push. The [earlier portable-build run](https://github.com/bugrakoc/SpoolCut/actions/runs/45530147921)
 exercised relocated Windows packaging.
 
-Existing issues and open checks are documented in [Windows VM results](WINDOWS.md).
+The [archived Rust Windows guide](https://github.com/bugrakoc/SpoolCut/blob/rust-gtk-baseline/docs/WINDOWS.md) records the baseline Windows results.
 They include 150% editor scaling, occasional software preview stutter and a
 HEVC Main 10 sample that FFmpeg decoded but some players failed to play. The
 latest Rust revision marks both output tracks as default. The effect on the
@@ -87,7 +88,7 @@ boundaries. Signing and notarization belong in packaging.
 
 ## B. Prototype and results
 
-The build in [qt-prototype](../qt-prototype/README.md) is independent of the
+The build in [qt-prototype](https://github.com/bugrakoc/SpoolCut/blob/f6f1a5a4e1fa332c34630eb934a1cea078982de8/qt-prototype/README.md) is independent of the
 Rust reference. It decodes H.264 and HEVC through libmpv, opens files through the
 platform picker or drag-and-drop, and shows a media bin and proportional
 QPainter timeline with a playhead, zoom and fit. QProcess probes one file at a
@@ -156,7 +157,7 @@ The run provides the two test packages, checksums and companion corresponding-so
 archives. Extract the outer Actions download. Make the Fedora AppImage executable.
 On Windows extract the inner ZIP and open `SpoolCut Qt Prototype/bin/SpoolCutQt.exe`.
 
-Follow the [manual checklist](../qt-prototype/README.md#manual-checks), including
+Follow the [manual checklist](https://github.com/bugrakoc/SpoolCut/blob/f6f1a5a4e1fa332c34630eb934a1cea078982de8/qt-prototype/README.md#manual-checks), including
 actual audio and playback on both systems, the preview renderer tooltip and
 100%, 150% and 200% display scaling. The results above verify the prototype's
 scope. The maintainer later approved Milestones C through E after the follow-up retests below.
@@ -343,7 +344,7 @@ teardown. Both frontends use the native no-overwrite Matroska export
 pipeline. The source-format and lossless-export rules remain in section C.
 
 Build and run the desktop with the commands in the
-[Qt desktop README](../qt-prototype/README.md). On Debian 13 with GCC 14.2,
+[Qt desktop README](https://github.com/bugrakoc/SpoolCut/blob/f6f1a5a4e1fa332c34630eb934a1cea078982de8/qt-prototype/README.md). On Debian 13 with GCC 14.2,
 Qt 6.8.2, libmpv 0.40 and FFmpeg 7.1.5, the desktop compiled with warnings
 as errors. The local software smoke verified proportional geometry, ruler
 snapping, clip and edge gestures, exact project reopen, missing media,
@@ -539,3 +540,46 @@ The desktop regression moves the next source while the timeline is playing,
 checks the missing-media display at the join, and relinks it without reopening
 the project. A Linux case also checks error handling when libmpv already has
 an open handle to the renamed file.
+
+## 0.3.0 production audit
+
+- CMake builds the shared core in `cpp/core`, the CLI in `cpp` and Qt
+  Widgets in `cpp/desktop`. The
+  [rust-gtk-baseline tag](https://github.com/bugrakoc/SpoolCut/tree/rust-gtk-baseline)
+  resolves to `39cb4eecef8914f187871aac2187f8f023d14e0d`. CI uses a
+  detached worktree at that commit for the reference tests.
+- The native preview surface test covers first preview after relinking,
+  repeated frames, recovery of editing history and ordinary empty preview.
+  The playback test also covers a source disappearing before a join.
+  [Production-layout desktop CI](https://github.com/bugrakoc/SpoolCut/actions/runs/45678519467)
+  passed both X11 and Weston checks after the undo test was changed to
+  trigger the QAction directly. KDE with NVIDIA remains part of final
+  manual acceptance.
+- The audit followed QObject ownership, GL context destruction and the
+  mpv callback lifetime. Preview errors now stop the active session
+  before notifying the editor. Preview opens local indexed media with
+  automatic sidecar loading and media references disabled. The worker
+  owns the job cancellation token and joins at completion or shutdown.
+- Automatic joins load the next file directly. A libmpv error triggers
+  the filesystem check and missing-media recovery. Explicit source
+  selections and export retain their source identity checks.
+- Source metadata is cached with each immutable index. This avoids
+  rebuilding keyframe lists for repeated clips during editor refresh.
+  Nonfinite playback positions are ignored before timestamp conversion.
+  The project reader rejects malformed Unicode strings while preserving
+  exact signed integer PTS and portable source paths.
+- Verified stream-copy cases compare the C++ and Rust plans, video and
+  audio payloads, decoded frame order and A/V offsets. Cases include
+  VFR, B-frames, HEVC Main 10, short video tails, invalid cuts, source
+  replacement, Ctrl+C cancellation, and no-overwrite publication races.
+  The [production-layout core run](https://github.com/bugrakoc/SpoolCut/actions/runs/45678519480)
+  covers Linux and Windows.
+- Production packages verify dependency inventories, versions, FFmpeg
+  configuration and the source revision. The AppImage runtime source set
+  now includes the exact Alpine recipes and static library sources in
+  addition to libfuse and squashfuse. See [packaging](PACKAGING.md) for
+  build and redistribution information.
+
+The migration PR records the final candidate revision, its CI runs and
+download links. Physical Windows OpenGL, mixed-DPI monitor testing,
+additional real-footage benchmarks and exFAT/removable media are deferred.

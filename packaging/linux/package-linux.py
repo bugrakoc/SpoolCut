@@ -143,6 +143,12 @@ def main():
     run("bash", app_sources, notice, app / "runtime-licenses")
     files = bundle(executable, app)
     collect_sources(files, app, sources)
+    copy(app / "source-revision.txt", sources / "source-revision.txt")
+    build_config = output("/usr/bin/ffmpeg", "-hide_banner", "-buildconf")
+    if "--enable-nonfree" in build_config:
+        raise RuntimeError("Cannot redistribute this FFmpeg configuration")
+    for directory in (app, sources):
+        (directory / "FFmpeg-buildconf.txt").write_text(build_config + "\n", encoding="utf-8")
 
     fs = dist / "app.squashfs"
     run("mksquashfs", app, fs, "-comp", "zstd", "-noappend", "-processors", "2", "-root-owned")

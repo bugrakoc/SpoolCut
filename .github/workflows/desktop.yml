@@ -53,6 +53,9 @@ jobs:
       - name: Exercise relocated binaries with system PATH
         shell: pwsh
         run: ./packaging/windows/smoke-portable.ps1
+      - name: Check portable ZIP and source checksums
+        working-directory: dist-windows
+        run: sha256sum -c *.sha256
       - uses: actions/upload-artifact@v4
         with:
           name: SpoolCut-Windows-x86_64
@@ -78,7 +81,7 @@ jobs:
       - name: Install native toolchain
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends git ca-certificates g++ cmake ninja-build pkg-config \
+          apt-get install -y --no-install-recommends git ca-certificates g++ clang-tidy cmake ninja-build pkg-config \
             qt6-base-dev qt6-wayland libmpv-dev ffmpeg libglib2.0-bin libgl1-mesa-dri weston xvfb xauth
       - uses: actions/checkout@v4
         with:
@@ -93,7 +96,8 @@ jobs:
           g++ --version
           pkg-config --modversion Qt6Widgets mpv
           ffmpeg -version
-          cmake -S . -B build-qt -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_COMPILE_WARNING_AS_ERROR=ON
+          cmake -S . -B build-qt -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_COMPILE_WARNING_AS_ERROR=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
           cmake --build build-qt
           xvfb-run -a ctest --test-dir build-qt -V -R '^desktop-'
       - name: Verify automatic fallback without an OpenGL surface
@@ -106,6 +110,7 @@ jobs:
         env:
           LIBGL_ALWAYS_SOFTWARE: 1
           QT_QPA_PLATFORM: wayland
+          SPOOLCUT_QT_REQUIRE_OPENGL: 1
         run: |
           export XDG_RUNTIME_DIR="$(mktemp -d)"
           export WAYLAND_DISPLAY=spoolcut-qt-ci
@@ -130,6 +135,11 @@ jobs:
           cmake -S . -B build-qt-asan -G Ninja -DCMAKE_BUILD_TYPE=Debug -DSPOOLCUT_SANITIZERS=ON
           cmake --build build-qt-asan
           ctest --test-dir build-qt-asan -V -R '^desktop-software$'
+      - name: Run Clang static analysis
+        run: |
+          clang-tidy --quiet -p build-qt --warnings-as-errors='*' \
+            --checks='-*,bugprone-dangling-handle,bugprone-use-after-move,bugprone-sizeof-expression,bugprone-suspicious-memory-comparison' \
+            cpp/desktop/*.cpp
 
   appimage:
     runs-on: ubuntu-24.04
@@ -155,7 +165,7 @@ jobs:
           '
       - name: Run relocated AppImage with Fedora 44 Wayland
         run: |
-          docker run --rm -v "$PWD:/src:ro" -w /src fedora:44 bash -euxc '
+          docker run --rm -v "$PWD:/src:ro" -w /src --env EXPECTED_REVISION="$(git rev-parse HEAD)" fedora:44 bash -euxc '
             dnf install -y weston mesa-dri-drivers libglvnd-egl libglvnd-glx libglvnd-opengl \
               mesa-libgbm libdrm vulkan-loader libwayland-client libwayland-cursor libwayland-egl \
               dejavu-sans-fonts xkeyboard-config desktop-file-utils
@@ -174,6 +184,9 @@ jobs:
             test -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
             bash packaging/linux/smoke-appimage.sh dist-linux/SpoolCut-"$(cat VERSION)"-Fedora-x86_64.AppImage
           '
+      - name: Check AppImage and source checksums
+        working-directory: dist-linux
+        run: sha256sum -c *.sha256
       - uses: actions/upload-artifact@v4
         with:
           name: SpoolCut-Fedora-x86_64

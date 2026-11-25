@@ -81,7 +81,7 @@ struct ExportPlan {
 class IndexedSource {
 public:
     static IndexedSource open(const QString &path, const Cancel &cancel);
-    [[nodiscard]] MediaInfo info() const;
+    [[nodiscard]] const MediaInfo &info() const;
     [[nodiscard]] PlannedClip planClip(const Clip &clip) const;
     [[nodiscard]] double frameAt(const Clip &clip, double sourceSeconds) const;
     void checkSource() const;

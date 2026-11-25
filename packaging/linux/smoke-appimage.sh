@@ -2,6 +2,7 @@
 set -euo pipefail
 image=$(realpath "$1")
 version=$(cat VERSION)
+revision=${EXPECTED_REVISION:-$(git rev-parse HEAD)}
 workspace=$(mktemp -d)
 trap 'rm -rf "$workspace"' EXIT
 cd "$workspace"
@@ -11,11 +12,16 @@ image="$workspace/SpoolCut ü relocated/SpoolCut.AppImage"
 "$image" --appimage-extract >/dev/null
 bundle="$workspace/SpoolCut ü payload"
 mv "$workspace/squashfs-root" "$bundle"
+test "$(cat "$bundle/source-revision.txt")" = "$revision"
+test -s "$bundle/Debian-packages.tsv"
+test -s "$bundle/runtime-licenses/Alpine-sources.tsv"
+test -s "$bundle/FFmpeg-buildconf.txt"
 export XDG_DATA_HOME="$workspace/desktop-data"
 export XDG_CURRENT_DESKTOP=KDE
 test -f "$bundle/plugins/platformthemes/libqxdgdesktopportal.so"
 unset QT_QPA_PLATFORMTHEME
 env PATH=/usr/bin:/bin "$bundle/AppRun" --cli --version | grep -Fx "SpoolCut $version"
+env PATH=/usr/bin:/bin "$bundle/AppRun" --version | grep -Fx "SpoolCut $version"
 for video in avc hevc; do
     encoding=(-c:v libx264)
     if [[ $video == hevc ]]; then
@@ -40,10 +46,14 @@ for video in avc hevc; do
                 exit 1
             }
         grep -F 'platformthemes/libqxdgdesktopportal.so" loaded library' "$workspace/preview.log"
-        grep -E '^(Software|OpenGL)' "$workspace/preview.log"
+        case "$mode" in
+            software) grep -Fx Software "$workspace/preview.log" ;;
+            auto) grep -E '^OpenGL ' "$workspace/preview.log" ;;
+        esac
     done
 done
 launcher="$XDG_DATA_HOME/applications/io.github.bugrakoc.SpoolCut.desktop"
 desktop-file-validate "$launcher"
+grep -Fx 'Name=SpoolCut' "$launcher"
 grep -Fx "$(printf 'Exec="%s" %%F' "$image")" "$launcher"
 test -s "$XDG_DATA_HOME/icons/hicolor/256x256/apps/io.github.bugrakoc.SpoolCut.png"

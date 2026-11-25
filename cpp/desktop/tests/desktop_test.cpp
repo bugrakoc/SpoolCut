@@ -296,6 +296,7 @@ private slots:
         QSignalSpy idle(&window, &Window::idle);
         QSignalSpy problems(&window, &Window::problem);
         QSignalSpy frames(window.preview(), &Preview::frameDrawn);
+        QSignalSpy previewErrors(window.preview(), &Preview::failed);
         window.show();
         window.importFiles({a, b}, true);
         QTRY_COMPARE_WITH_TIMEOUT(idle.size(), 1, 15000);
@@ -311,6 +312,7 @@ private slots:
         auto *timeline = window.timeline();
         QVERIFY(timeline->hasTiming());
         QTRY_VERIFY_WITH_TIMEOUT(!timeline->hasTiming(), 8000);
+        QCOMPARE(previewErrors.size(), 1);
         QCOMPARE(timeline->clips().size(), size_t{2});
         QVERIFY(timeline->clips()[0].unavailable.isEmpty());
         QCOMPARE(timeline->clips()[1].unavailable, QString("Missing media"));

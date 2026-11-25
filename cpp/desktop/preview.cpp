@@ -69,7 +69,7 @@ public:
             {"hwdec", "no"}, {"idle", "yes"}, {"pause", "yes"},
             {"keep-open", "yes"}, {"rebase-start-time", "no"}, {"hr-seek", "yes"}, {"load-scripts", "no"}, {"osc", "no"},
             {"input-default-bindings", "no"}, {"audio-display", "no"},
-            {"audio-file-auto", "no"}, {"sub-auto", "no"}, {"osd-level", "0"}
+            {"autoload-files", "no"}, {"access-references", "no"}, {"osd-level", "0"}
         };
         for (const auto &[name, value] : options) {
             if (const int result = mpv_set_option_string(handle_.get(), name, value); result < 0)
@@ -522,9 +522,8 @@ void Preview::handleRenderer(const QString &renderer) {
 void Preview::handleFailure(const QString &reason) {
     if (path_.isEmpty())
         return;
+    stop();
     placeholder_->setText(reason);
-    placeholder_->show();
-    layout_->setCurrentWidget(placeholder_);
     emit failed(reason);
 }
 

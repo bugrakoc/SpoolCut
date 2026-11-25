@@ -3,9 +3,17 @@ $PSNativeCommandUseErrorActionPreference = $true
 $root = Join-Path $env:RUNNER_TEMP "SpoolCut portable ü $([guid]::NewGuid())"
 $oldPath = $env:PATH
 $version = (Get-Content -LiteralPath VERSION -Raw).Trim()
+$revision = (git rev-parse HEAD).Trim()
 try {
     Expand-Archive -LiteralPath "dist-windows/SpoolCut-${version}-Windows-x86_64.zip" -DestinationPath $root
-    $bin = Join-Path $root 'SpoolCut/bin'
+    $bundle = Join-Path $root 'SpoolCut'
+    $bin = Join-Path $bundle 'bin'
+    if ((Get-Content -LiteralPath (Join-Path $bundle 'source-revision.txt') -Raw).Trim() -ne $revision) {
+        throw "Package source revision differs from the build"
+    }
+    foreach ($file in @('MSYS2-packages.tsv', 'FFmpeg-buildconf.txt', 'LICENSE')) {
+        if ((Get-Item -LiteralPath (Join-Path $bundle $file)).Length -eq 0) { throw "Empty package metadata $file" }
+    }
     $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
     $env:SPOOLCUT_QT_TEST_AUDIO_NULL = '1'
     Remove-Item Env:SPOOLCUT_QT_PREVIEW -ErrorAction SilentlyContinue
@@ -15,6 +23,9 @@ try {
     if ((& $cli --version) -ne "SpoolCut $version") { throw "Wrong bundled CLI version" }
     if ((Get-Item -LiteralPath $desktop).VersionInfo.ProductVersion -ne $version) {
         throw "Wrong desktop executable version"
+    }
+    if ((Get-Item -LiteralPath $cli).VersionInfo.ProductVersion -ne $version) {
+        throw "Wrong CLI executable metadata version"
     }
     $avc = Join-Path $root 'test ç AVC.mp4'
     $hevc = Join-Path $root 'test ü HEVC Main 10.mp4'

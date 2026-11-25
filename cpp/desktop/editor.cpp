@@ -132,7 +132,7 @@ std::vector<Segment> Editor::segments() const
         if (planned.durationUs > std::numeric_limits<qint64>::max() - start)
             throw Error(u"Timeline is too long"_s);
         const auto end = start + planned.durationUs;
-        const auto info = source.info();
+        const auto &info = source.info();
         const auto base = info.videoBase;
         Segment segment{project_.sources.at(clip.source), start, end,
                         base.seconds(clip.inPts), base.seconds(clip.outPts), {}};
@@ -156,7 +156,7 @@ std::vector<Segment> Editor::segments() const
 size_t Editor::insertSource(const QString &id, size_t slot)
 {
     const auto &source = index(id);
-    const auto info = source.info();
+    const auto &info = source.info();
     if (info.safeInPts.empty())
         throw Error(u"No safe cut was found"_s);
     auto ends = info.safeInPts;
@@ -199,7 +199,7 @@ void Editor::trim(size_t row, bool in, double sourceSeconds)
 {
     auto clip = project_.clips.at(row);
     const auto &source = index(clip.source);
-    const auto info = source.info();
+    const auto &info = source.info();
     auto points = info.safeInPts;
     if (!in)
         points.push_back(info.videoEndPts);
@@ -222,7 +222,7 @@ void Editor::split(size_t row, double sourceSeconds)
     auto left = project_.clips.at(row);
     auto right = left;
     const auto &source = index(left.source);
-    const auto info = source.info();
+    const auto &info = source.info();
     auto points = info.safeInPts;
     std::erase_if(points, [&](qint64 pts) { return pts <= left.inPts || pts >= right.outPts; });
     sortByDistance(points, info.videoBase, sourceSeconds);
