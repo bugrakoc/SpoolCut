@@ -22,8 +22,13 @@
 #include <QToolBar>
 #include <QUrl>
 
+#ifdef Q_OS_WIN
+#include <qt_windows.h>
+#endif
+
 #include <algorithm>
 #include <cmath>
+#include <utility>
 
 namespace {
 QString ffprobe() {
@@ -109,6 +114,11 @@ Window::Window()
             setPlaying(false);
     });
 
+#ifdef Q_OS_WIN
+    probe_.setCreateProcessArgumentsModifier([](QProcess::CreateProcessArguments *args) {
+        args->flags |= CREATE_NO_WINDOW;
+    });
+#endif
     probeTimeout_.setSingleShot(true);
     connect(&probeTimeout_, &QTimer::timeout, this, [this] {
         const QString path = std::exchange(probing_, {});
@@ -124,6 +134,16 @@ Window::Window()
         report(probe_.errorString());
         QTimer::singleShot(0, this, &Window::probeNext);
     });
+}
+
+Window::~Window() {
+    // QProcess can finish synchronously while it is being killed. Leave the
+    // probe callbacks disconnected before destruction of the window's state.
+    disconnect(&probe_, nullptr, this, nullptr);
+    if (probe_.state() != QProcess::NotRunning) {
+        probe_.kill();
+        probe_.waitForFinished(1000);
+    }
 }
 
 void Window::report(const QString &message) {

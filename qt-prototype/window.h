@@ -15,6 +15,7 @@ class Window final : public QMainWindow {
     Q_OBJECT
 public:
     Window();
+    ~Window() override;
     void importFiles(const QStringList &paths);
     void scrub(double seconds);
     void togglePlayback();

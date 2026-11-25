@@ -49,6 +49,8 @@ def frame(window, width, height):
         return "red"
     if b > 175 and r < 80 and g < 80:
         return "blue"
+    if g > 150 and r < 80 and b < 80:
+        return "green"
     return None
 
 
@@ -63,7 +65,9 @@ def ruler_y(window, height, qt):
     data = window.get_image(140, start, 1, 200, X.ZPixmap, 0xffffffff).data
     natural = [(242, 237, 232), (51, 41, 36)]
     for row in range(194):
-        if all(tuple(data[(row + i) * 4:(row + i) * 4 + 3]) in natural for i in range(6)):
+        pixels = [data[(row + i) * 4:(row + i) * 4 + 3] for i in range(6)]
+        if any(all(all(abs(left - right) <= 2 for left, right in zip(pixel, target))
+                   for pixel in pixels) for target in natural):
             return start + row + 4
     raise RuntimeError("GTK time ruler was not found")
 
@@ -92,6 +96,7 @@ def compare(xserver, executable, inputs, qt, env):
             idle = measure(process.pid)
             command("xdotool", "key", "space")
             playing = measure(process.pid)
+            wait_for(color_is("green"), 4)
             command("xdotool", "key", "space")
             ruler = ruler_y(window, height, qt)
             latency = []
@@ -120,10 +125,11 @@ def main():
         clips = []
         for name, length in (("red", 10), ("blue", 12)):
             path = root / f"{name}.mp4"
+            filters = ["-vf", "drawbox=c=lime:t=fill:enable='between(t,6,8)'"] if name == "red" else []
             command("ffmpeg", "-nostdin", "-v", "error", "-f", "lavfi", "-i",
                     f"color={name}:size=1280x720:rate=25:duration={length}", "-f", "lavfi", "-i",
                     f"sine=sample_rate=48000:duration={length}", "-c:v", "libx264",
-                    "-threads", "4", "-tag:v", "avc1", "-x264-params",
+                    *filters, "-threads", "4", "-tag:v", "avc1", "-x264-params",
                     "keyint=25:min-keyint=25:scenecut=0:open-gop=0", "-c:a", "aac", path)
             info = json.loads(command(inspector, "inspect", path))
             files.append(path)

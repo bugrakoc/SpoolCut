@@ -202,7 +202,7 @@ jobs:
           persist-credentials: false
       - name: Build both release editors
         run: |
-          git worktree add --detach /tmp/spoolcut-gtk 39cb4eecef8914f187871aac2187f8f023d14e0d
+          git -c safe.directory="$PWD" worktree add --detach /tmp/spoolcut-gtk 39cb4eecef8914f187871aac2187f8f023d14e0d
           cargo build --manifest-path /tmp/spoolcut-gtk/Cargo.toml --locked --release --features desktop --bins
           cmake -S qt-prototype -B build-qt -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
           cmake --build build-qt

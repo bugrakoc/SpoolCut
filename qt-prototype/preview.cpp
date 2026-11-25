@@ -6,6 +6,7 @@
 #include <QOpenGLFunctions>
 #include <QOpenGLWidget>
 #include <QPainter>
+#include <QPointer>
 #include <QStackedLayout>
 #include <QSurfaceFormat>
 #include <QTimer>
@@ -410,7 +411,11 @@ void Preview::installSurface(bool software) {
         view_ = view;
         surface_ = view->session();
     }
-    connect(surface_, &Surface::rendererFailed, this, &Preview::fallback, Qt::QueuedConnection);
+    const QPointer<Surface> source = surface_;
+    connect(surface_, &Surface::rendererFailed, this, [this, source](const QString &reason) {
+        if (source && source == surface_)
+            fallback(reason);
+    }, Qt::QueuedConnection);
     connect(surface_, &Surface::rendererReady, this, &Preview::handleRenderer);
     connect(surface_, &Surface::mediaFailed, this, &Preview::handleFailure);
     connect(surface_, &Surface::frameDrawn, this, &Preview::frameDrawn);
@@ -435,9 +440,6 @@ void Preview::installSurface(bool software) {
 }
 
 void Preview::fallback(const QString &reason) {
-    // Queued notifications may outlive a surface that already fell back.
-    if (sender() && sender() != surface_)
-        return;
     if (software_) {
         handleFailure(reason);
         return;

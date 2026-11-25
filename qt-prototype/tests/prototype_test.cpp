@@ -62,6 +62,11 @@ private slots:
         QVERIFY(!avc.isEmpty());
         QVERIFY(!hevc.isEmpty());
 
+        {
+            Window closingDuringImport;
+            closingDuringImport.importFiles({avc, hevc});
+        }
+
         for (int repeat = 0; repeat < 2; ++repeat) {
             Window window;
             QSignalSpy failures(&window, &Window::problem);
