@@ -20,11 +20,11 @@ The [command-line prototype](README.md) verifies H.264 and HEVC with generated f
 
 ## Milestone 2 — Ship a usable Fedora prototype
 
-- [ ] Add a media bin with multi-file import and one video lane. Place clips on a gapless sequence, then trim, split, reorder, or remove them.
-- [ ] Show the effective cut points and snap clip boundaries to safe positions. Use the same cut decisions for preview and export.
-- [ ] Embed libmpv and support scrubbing and playback across source changes. Test rapid seeks and clip switching on Fedora Wayland.
-- [ ] Save and reopen projects with their source references and edits. Handle missing source files and support undo and redo for timeline edits.
-- [ ] Add export progress, cancellation, and actionable compatibility errors. Provide a runnable Fedora build or documented build steps.
+- [x] Add a media bin with multi-file import and one video lane. Place clips on a gapless sequence, then trim, split, reorder, or remove them.
+- [x] Show the effective video cut points and snap clip boundaries to safe positions. Use the same video cut decisions for preview and export.
+- [ ] Validate rapid seeks and source switching on Fedora Wayland. The editor embeds libmpv for scrubbing and playback across source changes.
+- [x] Save and reopen projects with their source references and edits. Handle missing source files and support undo and redo for timeline edits.
+- [x] Add export progress, cancellation, and actionable compatibility errors. Provide a runnable Fedora build or documented build steps.
 - [ ] Run automated core and export tests in CI, plus a desktop smoke test on a runner with a display. Validate preview responsiveness and the exported joins on real Fedora hardware with representative camera footage.
 
 The prototype is ready when a user can assemble, save, reopen, preview, and export the same multi-source sequence on Fedora. The exported joins must match the effective cuts shown in the editor, with audio in sync and both original streams copied.

@@ -13,7 +13,7 @@ use serde_json::Value;
 
 use crate::{TimeBase, process};
 
-const STREAM_FIELDS: &str = "stream=index,codec_type,codec_name,codec_tag_string,profile,level,width,height,pix_fmt,field_order,color_space,color_range,color_transfer,color_primaries,chroma_location,sample_aspect_ratio,sample_fmt,sample_rate,channels,channel_layout,extradata,time_base:stream_disposition=attached_pic:stream_side_data=side_data_type";
+const STREAM_FIELDS: &str = "stream=index,codec_type,codec_name,codec_tag_string,profile,level,width,height,pix_fmt,field_order,color_space,color_range,color_transfer,color_primaries,chroma_location,sample_aspect_ratio,sample_fmt,sample_rate,channels,channel_layout,extradata,time_base,avg_frame_rate:stream_disposition=attached_pic:stream_side_data=side_data_type";
 const PACKET_FIELDS: &str =
     "packet=stream_index,pts,dts,duration,pos,size,flags:packet_side_data=side_data_type";
 
@@ -24,6 +24,12 @@ pub struct MediaInfo {
     pub video_time_base: TimeBase,
     pub safe_in_pts: Vec<i64>,
     pub video_end_pts: i64,
+    #[serde(skip)]
+    pub video_resolution: Option<(u64, u64)>,
+    #[serde(skip)]
+    pub average_frame_rate: Option<TimeBase>,
+    #[serde(skip)]
+    pub keyframe_pts: Vec<i64>,
 }
 
 pub(crate) struct Media {
@@ -45,6 +51,8 @@ pub(crate) struct Stream {
     pub index: usize,
     pub codec_type: String,
     pub time_base: String,
+    // A measured frame rate is informational and may differ across compatible sources.
+    avg_frame_rate: Option<String>,
     #[serde(default)]
     disposition: Disposition,
     #[serde(default)]
@@ -235,12 +243,31 @@ impl Media {
 pub fn inspect(path: &Path, cancel: &AtomicBool) -> Result<MediaInfo> {
     let media =
         Media::open(path, cancel).with_context(|| format!("inspecting {}", path.display()))?;
+    media_info(&media)
+}
+
+pub(crate) fn media_info(media: &Media) -> Result<MediaInfo> {
+    let video = &media.video;
+    let dimension = |name| video.parameters.get(name)?.as_u64().filter(|&n| n > 0);
+    let mut keyframe_pts: Vec<_> = media
+        .video_packets
+        .iter()
+        .filter(|packet| packet.is_key() && packet.usable())
+        .filter_map(|packet| packet.pts)
+        .collect();
+    keyframe_pts.sort_unstable();
     Ok(MediaInfo {
-        video_codec: media.video.parameter("codec_name")?.into(),
+        video_codec: video.parameter("codec_name")?.into(),
         audio_codec: media.audio.parameter("codec_name")?.into(),
         video_time_base: media.video_base,
-        safe_in_pts: media.cuts.into_keys().collect(),
+        safe_in_pts: media.cuts.keys().copied().collect(),
         video_end_pts: media.video_end_pts,
+        video_resolution: dimension("width").zip(dimension("height")),
+        average_frame_rate: video
+            .avg_frame_rate
+            .as_deref()
+            .and_then(|rate| TimeBase::parse(rate).ok()),
+        keyframe_pts,
     })
 }
 

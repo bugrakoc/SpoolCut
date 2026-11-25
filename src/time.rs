@@ -10,6 +10,10 @@ pub struct TimeBase {
 }
 
 impl TimeBase {
+    pub fn seconds(self, ticks: i64) -> f64 {
+        ticks as f64 * f64::from(self.numerator) / f64::from(self.denominator)
+    }
+
     pub(crate) fn parse(text: &str) -> Result<Self> {
         let (numerator, denominator) = text.split_once('/').context("invalid time base")?;
         let numerator = numerator.parse()?;

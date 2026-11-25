@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=SpoolCut
+Comment=Cut and join video without re-encoding
+Exec=spoolcut-desktop %F
+Icon=io.github.bugrakoc.SpoolCut
+StartupWMClass=io.github.bugrakoc.SpoolCut
+Terminal=false
+Categories=AudioVideo;Video;
