@@ -131,6 +131,12 @@ fn desktop_edit_preview_persist_export() {
     wait_for("the preview to initialize", || {
         app.preview.borrow().is_some()
     });
+    if std::env::var_os("SPOOLCUT_REQUIRE_OPENGL").is_some() {
+        assert!(
+            !app.preview.borrow().as_ref().unwrap().is_software(),
+            "OpenGL was required, but the editor fell back to software"
+        );
+    }
     app.start_index(vec![a, b.clone()], IndexIntent::Import);
     wait_for("media import", || app.state.borrow().job.is_none());
     assert_eq!(app.state.borrow().editor.project.sources.len(), 2);
@@ -329,8 +335,25 @@ fn desktop_edit_preview_persist_export() {
     wait_for("relink", || app.state.borrow().job.is_none());
     assert!(app.ui.export.is_sensitive(), "{}", app.ui.status.text());
 
-    app.save_to(scratch.path().join("relinked.json"));
+    let relinked = scratch.path().join("relinked.json");
+    app.save_to(relinked.clone());
     app.ui.window.close();
     assert!(app.closed.get());
     assert!(!app.ui.window.is_visible());
+    drop(app);
+    for _ in 0..2 {
+        let reopened = App::new(&gtk_app);
+        reopened.ui.window.present();
+        wait_for("a new preview instance", || {
+            reopened.preview.borrow().is_some()
+        });
+        reopened.open_project(relinked.clone());
+        wait_for("reopening relinked sources", || {
+            reopened.state.borrow().job.is_none()
+        });
+        reopened.request_preview(920_000, false);
+        wait_for_paused_frame(&reopened, 1, 0.28, false);
+        reopened.ui.window.close();
+        assert!(reopened.closed.get());
+    }
 }
