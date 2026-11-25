@@ -1,6 +1,6 @@
 # SpoolCut — C++ / Qt 6 migration roadmap
 
-The C++ core and Qt desktop passed the 0.2.2 maintainer test on Fedora KDE Wayland and Windows 11. The 0.3.0 candidate uses CMake across the production desktop and CLI. The [migration evidence](docs/CPP_QT_STATUS.md) records earlier tests, audit findings and the final acceptance gate.
+The migration shipped in [SpoolCut 0.3.0](https://github.com/bugrakoc/SpoolCut/releases/tag/v0.3.0). CMake builds the C++ core, Qt desktop and standalone CLI. The [migration evidence](docs/CPP_QT_STATUS.md) records maintainer acceptance, audit findings and production CI.
 
 ## 1. Decision and scope
 
@@ -39,9 +39,8 @@ Use explicit ownership, RAII, standard containers and smart pointers where appro
 The [Qt 0.2.2 maintainer results](docs/CPP_QT_STATUS.md#maintainer-acceptance-of-qt-022)
 cover Fedora KDE Wayland with NVIDIA and Windows 11 under QEMU. They include
 the original duration-verification export, Windows HEVC Main 10 export and
-playback, renderer selection, editing and missing-media recovery. The 0.3.0
-candidate requires a final retest of the Fedora missing-media preview and
-relinking fixes and a package smoke test on both platforms.
+playback, renderer selection, editing and missing-media recovery. The maintainer approved the final candidate and merged PR #4. Production
+CI ran the package smoke tests against the merge commit.
 
 ### A — Baseline audit and regression inventory
 
@@ -81,15 +80,15 @@ relinking fixes and a package smoke test on both platforms.
 
 - [x] Maintain reproducible documented Linux and Windows builds; use a coherent compiler/ABI/runtime for Qt/libmpv and a supported dependency source. Avoid hardcoded developer paths. Use CMake presets if they simplify the workflow.
 - [x] Run core/export regression tests and desktop smoke tests on both targets. Use actual FFmpeg encoders for generated fixtures. Exercise packaged executables in clean/relocated environments. Record skipped tests and actual renderer.
-- [ ] Include Qt platform plugins (Wayland/X11 as appropriate; Windows), image/icon plugins as needed, libmpv, FFmpeg/ffprobe and compatible dependencies. Check executable discovery, non-ASCII paths, spaces, existing/locked outputs, different drives, supported and unsupported filesystems.
-- [ ] Retest the final packages on Fedora KDE Wayland and Windows 11. Earlier maintainer tests covered NVIDIA OpenGL on Fedora, Windows software preview and 100%, 150% and 200% scaling. Physical Windows OpenGL and mixed-DPI monitors are deferred.
-- [ ] Preserve GPLv3 licensing. Verify redistribution terms for exact Qt modules, FFmpeg, libmpv and every bundled dependency, provide required notices and corresponding source/build recipes as applicable. Prefer redistributable dynamic Qt builds and avoid proprietary-only dependencies.
+- [x] Package Qt platform plugins, libmpv, FFmpeg/ffprobe and dependencies. Smoke-test relocated packages with Unicode and space-containing paths, and verify destination safeguards in CI. exFAT and removable-drive testing are deferred.
+- [x] Record final maintainer acceptance. Earlier maintainer results cover NVIDIA OpenGL on Fedora, Windows software preview and 100%, 150% and 200% scaling. Physical Windows OpenGL and mixed-DPI monitors are deferred.
+- [x] Preserve GPLv3 licensing and ship dependency inventories, licensing notices, corresponding sources and build recipes. See the [packaging guide](docs/PACKAGING.md).
 - [x] Document macOS boundaries (file identity/publication, paths, .app layout, Qt plugins, graphics backend, signing/notarization). Do not implement or claim macOS support yet.
 - [x] Record feature parity, limitations and hosted performance measurements. Document the production build and packaging. Preserve the Rust reference in Git and retain the differential fixtures.
-- [ ] Finish CI for the exact PR head and obtain maintainer acceptance of both packages. After acceptance, verify the merge revision and publish 0.3.0.
+- [x] Verify the accepted PR head and merge revision in CI. Publish [0.3.0](https://github.com/bugrakoc/SpoolCut/releases/tag/v0.3.0) from the merge commit.
 
 ## 5. Release acceptance
 
 The migrated version must reproduce the verified reference's safe cuts, packet-copy behavior, project interoperability and existing functionality. There must be no silent re-encoding, no unexplained regression in timing/verification, no new corruption or destructive overwrite risk, and no known blocking issue in native Fedora/Windows packages. All required CI and manual checks must be evidenced. Resolve significant performance regressions or obtain explicit approval for documented tradeoffs. A successful prototype alone is not a release candidate.
 
-The final gate is the maintainer's confirmation of the 0.3.0 candidate. The migration PR records the exact revision, CI runs, downloads and platform checklist. The production release is built from the verified merge on `main`.
+The maintainer accepted `d1b3b90` on 25 November 2026 and merged [PR #4](https://github.com/bugrakoc/SpoolCut/pull/4). The release binaries and corresponding sources were built and verified from merge commit `c5ce749`. The [production evidence](docs/CPP_QT_STATUS.md#030-release) links the exact runs.

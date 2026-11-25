@@ -583,3 +583,23 @@ an open handle to the renamed file.
 The migration PR records the final candidate revision, its CI runs and
 download links. Physical Windows OpenGL, mixed-DPI monitor testing,
 additional real-footage benchmarks and exFAT/removable media are deferred.
+
+## 0.3.0 release
+
+The maintainer approved candidate `d1b3b907364e0b556148aafdcbc0ec42222e66a5`
+and merged [PR #4](https://github.com/bugrakoc/SpoolCut/pull/4) on
+25 November 2026. The merge commit
+[`c5ce749`](https://github.com/bugrakoc/SpoolCut/commit/c5ce749d0b03c33aa570409fd7c1627b38138cf9)
+has the same source tree as the accepted candidate.
+
+- [Production core and export CI](https://github.com/bugrakoc/SpoolCut/actions/runs/45691365203)
+  passed Linux and Windows differential tests, core sanitizers and static analysis.
+- [Production desktop and package CI](https://github.com/bugrakoc/SpoolCut/actions/runs/45691365190)
+  passed desktop, relinking, renderer and relocated package checks.
+- [SpoolCut 0.3.0](https://github.com/bugrakoc/SpoolCut/releases/tag/v0.3.0)
+  publishes the AppImage, portable Windows ZIP, corresponding sources and
+  checksums from the merge commit. Release upload verified the four embedded
+  revisions and the SHA-256 digest of each uploaded asset.
+
+Physical Windows OpenGL, mixed-DPI monitors, exFAT and removable-drive
+verification, further hardware benchmarks and macOS are deferred.

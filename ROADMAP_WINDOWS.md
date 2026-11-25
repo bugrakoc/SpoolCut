@@ -11,7 +11,8 @@ and [test results](docs/CPP_QT_STATUS.md).
   playback in VLC in a Windows 11 VM.
 - [x] Verify that a relocated portable ZIP discovers its own Qt plugin,
   media tools and shared libraries with a system-only PATH in hosted CI.
-- [ ] Complete final manual acceptance of the 0.3.0 package.
+- [x] Record maintainer acceptance of the [0.3.0 release candidate](https://github.com/bugrakoc/SpoolCut/pull/4)
+  and publish the [Windows package](https://github.com/bugrakoc/SpoolCut/releases/tag/v0.3.0).
 - [ ] Test hardware OpenGL, mixed-DPI monitors and supported publication
   semantics on removable/exFAT destinations when available.
 

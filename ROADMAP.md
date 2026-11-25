@@ -14,10 +14,9 @@ export planning in the shared core.
 - [x] Use CMake for the production desktop and CLI. Keep the exact
   Rust/GTK baseline available in Git for differential testing.
 - [x] Record Fedora KDE and Windows 11 acceptance for the 0.2.2 test build.
-- [ ] Verify the final candidate packages in CI and complete maintainer
-  acceptance of the same revision on Fedora and Windows.
-- [ ] Merge the accepted revision and publish 0.3.0 with its matching
-  binary, checksum and corresponding-source archives.
+- [x] Verify the final candidate in CI and record maintainer acceptance.
+- [x] Verify the merge on main and publish [0.3.0](https://github.com/bugrakoc/SpoolCut/releases/tag/v0.3.0)
+  with matching binary, checksum and corresponding-source archives.
 
 See the [migration roadmap](ROADMAP_CPP_QT.md) and
 [verification results](docs/CPP_QT_STATUS.md).

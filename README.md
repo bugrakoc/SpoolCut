@@ -7,8 +7,8 @@ editor and the command-line tool share a C++20 stream-copy library.
 
 ## Run SpoolCut
 
-Get the AppImage for Fedora 44 x86-64 or the portable ZIP for Windows 11
-x86-64 from the [releases page](https://github.com/bugrakoc/SpoolCut/releases).
+Download [SpoolCut 0.3.0](https://github.com/bugrakoc/SpoolCut/releases/tag/v0.3.0) as an AppImage
+for Fedora 44 x86-64 or a portable ZIP for Windows 11 x86-64.
 The packages include Qt, libmpv, FFmpeg and ffprobe.
 
 - **Fedora.** Make the AppImage executable and open it. It adds a SpoolCut
