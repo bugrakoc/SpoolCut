@@ -1,0 +1,19 @@
+name: Archive the Rust GTK baseline
+on:
+  push:
+    branches: [cpp-qt]
+    paths: [.github/workflows/archive-rust.yml]
+permissions:
+  contents: read
+jobs:
+  create-archival-tag:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Tag the verified baseline
+        run: |
+          gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+            -f ref=refs/tags/rust-gtk-baseline -f sha=39cb4eecef8914f187871aac2187f8f023d14e0d
