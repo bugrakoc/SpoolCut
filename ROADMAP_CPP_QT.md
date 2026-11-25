@@ -1,6 +1,6 @@
 # SpoolCut — C++ / Qt 6 migration roadmap
 
-Status: baseline audit recorded; prototype gate pending. See [migration evidence](docs/CPP_QT_STATUS.md) for the reference and test results.
+Status: baseline audit complete. The prototype is at the maintainer approval checkpoint. See [migration evidence](docs/CPP_QT_STATUS.md) for hosted test results, downloads and outstanding hardware checks.
 
 ## 1. Decision and scope
 
@@ -45,10 +45,10 @@ Use explicit ownership, RAII, standard containers and smart pointers where appro
 
 ### B — Qt feasibility prototype (hard gate before full rewrite)
 
-- [ ] Build minimal C++20/Qt Widgets editor with native menus/window controls, resizable media/preview/timeline layout, file open, libmpv H.264/HEVC playback with audio, pause, seek, source switching and a proportional custom timeline with playhead and zoom.
-- [ ] Render through QOpenGLWidget using the current Qt context and correct framebuffer, device pixel ratio, context lifetime and libmpv callback threading. Do not assume EGL/WGL/GLX specifics or a particular OpenGL implementation. Implement a tested software fallback; never let a failed graphics initialization crash the app.
+- [x] Build minimal C++20/Qt Widgets editor with native menus/window controls, resizable media/preview/timeline layout, file open, libmpv H.264/HEVC playback with audio, pause, seek, source switching and a proportional custom timeline with playhead and zoom.
+- [x] Render through QOpenGLWidget using the current Qt context and correct framebuffer, device pixel ratio, context lifetime and libmpv callback threading. Do not assume EGL/WGL/GLX specifics or a particular OpenGL implementation. Implement a tested software fallback; never let a failed graphics initialization crash the app.
 - [ ] Exercise rapid seeking, resizing, source switches, repeated open/close, playback and clean shutdown. Test Fedora Wayland and native Windows 11; record which renderer actually runs.
-- [ ] Build relocatable Fedora AppImage and Windows portable ZIP including required Qt platform plugins, libmpv, FFmpeg/ffprobe, runtime dependencies and license notices. Smoke-test on CI without development PATH and on clean target machines where possible.
+- [x] Build relocatable Fedora AppImage and Windows portable ZIP including required Qt platform plugins, libmpv, FFmpeg/ffprobe, runtime dependencies and license notices. Smoke-test on CI without development PATH and on clean target machines where possible.
 - [ ] Compare with the GTK reference on equivalent footage and hardware: startup, idle/playing CPU and memory, scrubbing responsiveness, packaging/install friction, DPI scaling, taskbar icons and decoration behavior. Record comparable measurements and limitations; no unsupported claims.
 - [ ] Present artifacts and evidence for maintainer Fedora and Windows VM/hardware testing. Obtain explicit go/no-go before porting the full lossless engine. If the prototype cannot establish a reliable preview and practical packaging advantage, fix bounded blockers or recommend retaining Rust/GTK. Software-only hosted CI is not proof of accelerated physical playback.
 
