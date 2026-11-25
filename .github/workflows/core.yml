@@ -1,0 +1,99 @@
+name: Core and export
+
+on:
+  push:
+    branches: [main, cpp-qt]
+  pull_request:
+    branches: [main, cpp-qt]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    container: rust:1-trixie
+    timeout-minutes: 25
+    steps:
+      - name: Install Qt and media tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git g++ clang clang-tools cmake ninja-build qt6-base-dev ffmpeg python3
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Build and test the pinned Rust reference
+        run: |
+          git -c safe.directory="$PWD" worktree add --detach /tmp/spoolcut-reference 39cb4eecef8914f187871aac2187f8f023d14e0d
+          rustc --version
+          cargo test --manifest-path /tmp/spoolcut-reference/Cargo.toml --locked
+          cargo build --manifest-path /tmp/spoolcut-reference/Cargo.toml --locked --bin spoolcut
+      - name: Build and compare the native CLIs
+        run: |
+          g++ --version
+          ffmpeg -version
+          ffprobe -version
+          cmake -S . -B build-qt-core -G Ninja -DSPOOLCUT_BUILD_DESKTOP=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_COMPILE_WARNING_AS_ERROR=ON \
+            -DSPOOLCUT_RUST_REFERENCE=/tmp/spoolcut-reference/target/debug/spoolcut
+          cmake --build build-qt-core
+          ctest --test-dir build-qt-core --output-on-failure -V
+      - name: Run AddressSanitizer and UndefinedBehaviorSanitizer
+        env:
+          UBSAN_OPTIONS: halt_on_error=1
+        run: |
+          cmake -S . -B build-qt-sanitized -G Ninja -DSPOOLCUT_BUILD_DESKTOP=OFF -DCMAKE_BUILD_TYPE=Debug -DSPOOLCUT_SANITIZERS=ON \
+            -DSPOOLCUT_RUST_REFERENCE=/tmp/spoolcut-reference/target/debug/spoolcut
+          cmake --build build-qt-sanitized
+          ctest --test-dir build-qt-sanitized --output-on-failure
+      - name: Run Clang static analysis
+        run: |
+          scan-build --status-bugs cmake -S . -B build-qt-analysis -G Ninja -DSPOOLCUT_BUILD_DESKTOP=OFF -DCMAKE_BUILD_TYPE=Debug
+          scan-build --status-bugs cmake --build build-qt-analysis
+
+  windows:
+    runs-on: windows-2025
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-qt6-base
+            mingw-w64-ucrt-x86_64-ffmpeg
+            mingw-w64-ucrt-x86_64-python
+            mingw-w64-ucrt-x86_64-rust
+      - name: Run native Windows reference and differential tests
+        run: |
+          set -euo pipefail
+          test "$MSYSTEM" = UCRT64
+          test "$(command -v rustc)" = /ucrt64/bin/rustc
+          rustc -vV
+          g++ --version
+          ffmpeg -version
+          ffprobe -version
+          if [[ -d /c/Users/runneradmin/AppData/Local/Temp && "$(cygpath -m /tmp)" == D:* ]]; then
+            export SPOOLCUT_TEST_OTHER_VOLUME="C:/Users/runneradmin/AppData/Local/Temp"
+          fi
+          git worktree add --detach ../spoolcut-reference 39cb4eecef8914f187871aac2187f8f023d14e0d
+          cargo test --manifest-path ../spoolcut-reference/Cargo.toml --locked
+          cargo build --manifest-path ../spoolcut-reference/Cargo.toml --locked --bin spoolcut
+          cmake -S . -B build-qt-core -G Ninja -DSPOOLCUT_BUILD_DESKTOP=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_COMPILE_WARNING_AS_ERROR=ON \
+            -DSPOOLCUT_RUST_REFERENCE="$(cygpath -m "$PWD/../spoolcut-reference/target/debug/spoolcut.exe")"
+          cmake --build build-qt-core
+          ctest --test-dir build-qt-core --output-on-failure -V

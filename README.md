@@ -2,74 +2,129 @@
 
 <img src="assets/io.github.bugrakoc.SpoolCut.png" alt="SpoolCut icon" width="96" height="96">
 
-Cut and join video without re-encoding. SpoolCut has a GTK desktop editor and a command-line tool. See the [Windows build and testing guide](docs/WINDOWS.md) for the Windows 11 port.
+SpoolCut cuts and joins compatible video without re-encoding. The Qt Widgets
+editor and the command-line tool share a C++20 stream-copy library.
 
-## Desktop editor
+## Run SpoolCut
 
-The AppImage adds a SpoolCut launcher to your application menu on first run so desktop panels can find its icon. If you move the AppImage, run it from the new location to update its launcher.
+Get the AppImage for Fedora 44 x86-64 or the portable ZIP for Windows 11
+x86-64 from the [releases page](https://github.com/bugrakoc/SpoolCut/releases).
+The packages include Qt, libmpv, FFmpeg and ffprobe.
 
-Build with a current stable Rust toolchain, GTK 4.10 or newer, and libmpv from mpv 0.38 or newer. On recent Fedora releases, install the build dependencies and FFmpeg tools with:
+- **Fedora.** Make the AppImage executable and open it. It adds a SpoolCut
+  application launcher on first run. If you move the AppImage, run it from
+  its new location to update the launcher. Use `--appimage-extract-and-run`
+  if FUSE is unavailable.
+- **Windows.** Extract the ZIP and open `SpoolCut/bin/SpoolCut.exe`. Keep
+  the contents of `bin` together. See the [Windows guide](docs/WINDOWS.md)
+  for native builds and renderer settings.
+
+Fedora uses OpenGL by default and supports a software fallback. Run
+`SPOOLCUT_QT_PREVIEW=software ./SpoolCut-0.3.0-Fedora-x86_64.AppImage` to
+select software explicitly. Windows defaults to software. Set
+`SPOOLCUT_QT_PREVIEW=opengl` to try OpenGL on Windows. The preview tooltip
+reports the active renderer and any fallback. Both renderers decode footage
+on the CPU.
+
+## Edit and export
+
+1. Import MP4 or MOV files. Drag a bin item to the timeline or double-click
+   it to append it. Drag clip bodies to reorder them and drag their edges to
+   trim. SpoolCut keeps the timeline gapless.
+2. Click the ruler to jump to a safe keyframe or drag the ruler to scrub by
+   frame. Scroll to pan, use **−**, **+**, or Ctrl+scroll to zoom, and click
+   **Fit** to show the whole sequence.
+3. Press **S** to split at a safe boundary near the playhead. Use **Space**
+   to play and pause, and **←** or **→** to jump between safe keyframes.
+   Select a clip to cut or copy it. Paste inserts at the boundary nearest
+   the playhead. Use Ctrl+Z to undo and Ctrl+Shift+Z to redo.
+4. Save your sequence as a SpoolCut JSON project. If a source moves, select
+   it in the bin and choose **Relink source**. SpoolCut checks the existing
+   cuts against the replacement before restoring playback.
+5. Choose **Export Matroska** to write a new MKV. The status bar shows
+   planning, copying, joining and verification. **Cancel operation** stops
+   the active export or media inspection.
+
+### Supported footage
+
+- MP4 or MOV with one H.264 (`avc1`) or HEVC (`hvc1`) video track and one
+  AAC-LC audio track. Clips in a sequence must share stream properties and
+  decoder configuration. Extra tracks such as subtitles and timecode are
+  omitted. Other video tags, additional audio tracks and stream side data
+  such as a display rotation matrix are unsupported.
+- Video cuts use closed IDRs that partition presentation order. The out
+  point is exclusive. Source end is usable when the final displayed frame
+  and audio range pass validation. Discarded, corrupt or otherwise unsafe
+  packets can disqualify a cut.
+- Export copies packets and keeps complete AAC frames inside each video
+  range. Audio may differ briefly at joins when cut points fall between AAC
+  frames. MKV packet timestamps round to milliseconds.
+- SpoolCut verifies the staged output before publication and preserves
+  existing destinations. Allow space for the staged clips and joined file.
+  Linux requires hard-link support in the destination folder. Windows uses
+  a same-volume rename with replacement disabled.
+
+## Command line
+
+Use `spoolcut` from a CMake build, `./SpoolCut-0.3.0-Fedora-x86_64.AppImage --cli`
+on Fedora, or `SpoolCut/bin/spoolcut-cli.exe` on Windows.
 
 ```sh
-sudo dnf install gcc cargo pkgconf-pkg-config gtk4-devel mpv-devel ffmpeg-free
-cargo run --release --locked --features desktop --bin spoolcut-desktop
+spoolcut inspect camera-a.mp4
+spoolcut inspect camera-b.mp4
+spoolcut plan timeline.spoolcut.json
+spoolcut export timeline.spoolcut.json output.mkv
 ```
 
-libmpv needs H.264 and HEVC decoding support for preview. The FFmpeg build used for the tests also needs the libx264 and libx265 encoders.
-
-1. Import one or more MP4 or MOV files. Drag a source onto the timeline or select it and click **Add to timeline**.
-2. Click the ruler to jump to the nearest safe keyframe or drag on it to scrub by frame. Scroll over the timeline to pan, use **−**, **+**, or Ctrl+scroll to zoom, and click **Fit** to show the whole sequence.
-3. Drag clip bodies to reorder them and drag clip edges to trim. The timeline closes gaps after edits. Trimming and **Split at playhead** snap to safe video cut points.
-4. Save the sequence as a JSON project, and use **Relink** if a source moves.
-5. Choose **Export MKV**. The status area shows progress through validation, copying, joining, and verification.
-
-The preview plays decoded source audio. Export keeps only complete AAC packets, so you may hear a short difference at joins with unaligned audio boundaries.
-
-Use Space to play or pause, and **←** or **→** to seek to the keyframes marked on the clips. Select a timeline clip and use Ctrl+X or Ctrl+C to cut or copy it. Ctrl+V inserts the clip at the boundary nearest the playhead. Use Ctrl+Z to undo and Ctrl+Shift+Z to redo.
-
-## Command-line export
-
-Install a current stable Rust toolchain and put FFmpeg and ffprobe on your PATH. Then build and inspect each source.
-
-```sh
-cargo build --release --locked
-target/release/spoolcut inspect camera-a.mp4
-target/release/spoolcut inspect camera-b.mp4
-```
-
-Save a project as `timeline.json`. Relative source paths resolve from the project file's directory. Use the integer values from each file's `safe_in_pts` list for the clip boundaries. The out point is exclusive and can also be the source's `video_end_pts` if the range passes validation.
+A project stores source paths and ordered clip boundaries in each source's
+video time base. Relative paths resolve from the project directory. Use
+the integer values from `inspect` as cut boundaries. The PTS values below
+are examples.
 
 ```json
 {
-  "sources": {
-    "a": "camera-a.mp4",
-    "b": "camera-b.mp4"
-  },
+  "sources": {"a": "camera-a.mp4", "b": "camera-b.mp4"},
   "clips": [
-    { "source": "a", "in_pts": 0, "out_pts": 8192 },
-    { "source": "b", "in_pts": 8192, "out_pts": 16384 },
-    { "source": "a", "in_pts": 16384, "out_pts": 24576 }
+    {"source": "a", "in_pts": 0, "out_pts": 8192},
+    {"source": "b", "in_pts": 8192, "out_pts": 16384}
   ]
 }
 ```
 
-The numbers above are examples. `inspect` reports video PTS in the source stream's own time base. `plan` checks the requested ranges and prints the effective timeline in microseconds before any media is written.
+`plan` reports the effective timeline in microseconds. Press Ctrl+C to
+cancel. SpoolCut looks for FFmpeg and ffprobe alongside the executable and
+then on PATH. Set `SPOOLCUT_FFMPEG` and `SPOOLCUT_FFPROBE` to use specific
+executables.
+
+## Build and test
+
+Use CMake 3.25+, C++20 GCC or Clang, Qt 6.8+, Ninja or another CMake
+generator, pkg-config and libmpv API 2.3+. Provide FFmpeg and ffprobe with
+H.264 and HEVC. Tests also require Python 3 and the x264, x265 and AAC
+encoders. Example Debian development packages are `g++ cmake ninja-build
+pkg-config qt6-base-dev qt6-wayland libmpv-dev ffmpeg python3`.
+For Fedora use `gcc-c++ cmake ninja-build pkgconf-pkg-config qt6-qtbase-devel
+qt6-qtwayland mpv-devel python3` with codec-enabled media tools.
 
 ```sh
-target/release/spoolcut plan timeline.json
-target/release/spoolcut export timeline.json output.mkv
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+./build/spoolcut-desktop
+ctest --test-dir build --output-on-failure
 ```
 
-Press Ctrl+C to cancel. SpoolCut checks the staged MKV before publishing it and preserves any existing destination. Linux requires hard links on the destination filesystem. Windows uses a same-volume rename with replacement disabled. Allow temporary space for the copied clips and the joined file. Export reads each source again for each clip that uses it.
+Set `-DSPOOLCUT_BUILD_DESKTOP=OFF` for a CLI-only build with Qt Core.
+Run the desktop tests under a graphical session, Xvfb, or Weston. Use
+`-DSPOOLCUT_RUST_REFERENCE=/path/to/reference/spoolcut` to compare output
+with the pinned [Rust/GTK reference](https://github.com/bugrakoc/SpoolCut/tree/39cb4eecef8914f187871aac2187f8f023d14e0d).
+See the [migration evidence](docs/CPP_QT_STATUS.md) for automated and
+maintainer results.
 
-## Supported footage
+## License and sources
 
-- MP4 or MOV with one H.264 (`avc1`) or HEVC (`hvc1`) video stream and one AAC-LC audio stream. Source files in a sequence must share the same decoder configuration and stream properties. Other tracks such as subtitles and timecode are omitted.
-- Video cuts are allowed at closed IDR points that partition the source's presentation timestamps cleanly. Each selected range must end at the end of its last displayed frame. Sources with stream side data such as display rotation or selected packets flagged for discard are rejected.
-- SpoolCut copies complete AAC frames within the selected video range and preserves their timing relative to video. A cut between AAC frame boundaries can leave a gap of up to one AAC frame on each side of a join. Matroska packet timestamps are rounded to milliseconds.
-
-## Tests
-
-`cargo test --locked` generates fixtures using FFmpeg with the `libx264`, `libx265`, and `aac` encoders. It checks decoded frame order, video and audio packet hashes, output duration, A/V timing, unsafe cuts, incompatible streams, and cancellation. The fixtures cover B-frames, fractional and variable frame timing, and different source time bases.
-
-With a graphical session, run the desktop smoke test with `cargo test --locked --features desktop --bin spoolcut-desktop -- --ignored`.
+SpoolCut is distributed under [GPLv3](LICENSE). The matching Linux and
+Windows source archives include the exact SpoolCut revision, third-party
+package inventories and corresponding source and build recipes. Binary
+packages include notices and a source revision. Download the matching
+archive from the same release and keep it available when redistributing
+a binary. See the [packaging guide](docs/PACKAGING.md).

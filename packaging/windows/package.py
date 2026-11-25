@@ -1,6 +1,5 @@
 """Build a portable SpoolCut ZIP and matching source archive in MSYS2 UCRT64."""
 
-import argparse
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 import hashlib
@@ -49,22 +48,7 @@ def package_database(msys):
     return packages
 
 
-def copy_runtime(prefix, bundle, release, files):
-    bin_dir = bundle / "bin"
-    bin_dir.mkdir(parents=True)
-    roots = [
-        (release / "spoolcut-desktop.exe", bin_dir / "SpoolCut.exe"),
-        (release / "spoolcut.exe", bin_dir / "spoolcut-cli.exe"),
-        (prefix / "bin/ffmpeg.exe", bin_dir / "ffmpeg.exe"),
-        (prefix / "bin/ffprobe.exe", bin_dir / "ffprobe.exe"),
-    ]
-    pixbuf = prefix / "lib/gdk-pixbuf-2.0"
-    loaders = sorted(pixbuf.glob("*/loaders/*.dll"))
-    roots.extend((dll, bundle / dll.relative_to(prefix)) for dll in loaders)
-    if loaders:
-        query_loaders = prefix / "bin/gdk-pixbuf-query-loaders.exe"
-        roots.append((query_loaders, bin_dir / query_loaders.name))
-
+def copy_pe_runtime(prefix, bin_dir, roots, files):
     packages = set()
     owners = {path: package for package, paths in files.items() for path in paths}
     known_dlls = {p.name.lower(): p for p in (prefix / "bin").glob("*.dll")}
@@ -92,23 +76,6 @@ def copy_runtime(prefix, bundle, release, files):
                 or (Path(os.environ["SystemRoot"]) / "System32" / lower).is_file()
             ):
                 raise RuntimeError(f"Missing DLL {name} imported by {source.name}")
-
-    for package in ("gtk4", "glib2", "fontconfig", "adwaita-icon-theme", "hicolor-icon-theme"):
-        owner = UCRT + package
-        packages.add(owner)
-        for path in files[owner]:
-            if path.startswith((
-                "share/icons/", "share/glib-2.0/schemas/", "share/gtk-4.0/",
-                "share/locale/", "etc/fonts/",
-            )):
-                copy_file(prefix, path, bundle)
-    schemas = bundle / "share/glib-2.0/schemas"
-    if schemas.is_dir():
-        run(str(prefix / "bin/glib-compile-schemas.exe"), "--strict", str(schemas))
-    if loaders:
-        helper = bin_dir / "gdk-pixbuf-query-loaders.exe"
-        run(str(helper), "--update-cache")
-        helper.unlink()
     return packages
 
 
@@ -176,101 +143,85 @@ def verify_sources(msys, directory, filenames):
                 raise RuntimeError(f"Invalid or revoked MSYS2 signature: {name}")
 
 
-def write_archives(prefix, bundle, sources, output, packages, files):
+VERSION = Path("VERSION").read_text(encoding="ascii").strip()
+
+
+def package(prefix, executable, output, scratch):
+    bundle = scratch / "SpoolCut"
+    bin_dir = bundle / "bin"
+    sources = scratch / f"SpoolCut-{VERSION}-Windows-sources"
+    native_sources = sources / "MSYS2"
+    native_sources.mkdir(parents=True)
+
+    files = installed_files()
+    qt_platforms = [p for p in files[UCRT + "qt6-base"] if p.endswith("/platforms/qwindows.dll")]
+    if len(qt_platforms) != 1:
+        raise RuntimeError(f"Expected one Qt Windows plugin, found {qt_platforms}")
+    roots = [(executable, bin_dir / "SpoolCut.exe"),
+             (executable.with_name("spoolcut.exe"), bin_dir / "spoolcut-cli.exe"),
+             (prefix / qt_platforms[0], bin_dir / "plugins/platforms/qwindows.dll")]
+    for tool in ("ffmpeg.exe", "ffprobe.exe"):
+        roots.append((prefix / "bin" / tool, bin_dir / tool))
+    packages = copy_pe_runtime(prefix, bin_dir, roots, files)
+    (bin_dir / "qt.conf").write_text("[Paths]\nPlugins=plugins\n", encoding="utf-8")
+
     msys = prefix.parent
     database = package_database(msys)
-    versions = dict(
-        entry.split(maxsplit=1)
-        for entry in run("pacman", "-Q", capture=True).decode().splitlines()
-    )
-    inventory = ["Package\tVersion\tLicenses\tBinary SHA-256\tBinary package\tCorresponding source\n"]
+    versions = dict(line.split(maxsplit=1)
+                    for line in run("pacman", "-Q", capture=True).decode().splitlines())
+    packages.update(UCRT + name for name in ("crt", "headers", "gcc"))
     filenames = set()
-    # The executables also link the Rust standard library and MinGW CRT.
-    packages.update((UCRT + "rust", UCRT + "crt"))
-    for package in sorted(packages):
-        record = database[package]
-        version = versions[package]
-        if record["VERSION"] != version:
-            raise RuntimeError(f"Installed and repository versions of {package} differ")
-        name = f"{record['BASE']}-{version.replace(':', '~')}.src.tar.zst"
-        filenames.add(name)
-        license_ids = ", ".join(record.get("LICENSE", "").splitlines())
-        inventory.append(
-            f"{package}\t{version}\t{license_ids}\t{record['SHA256SUM']}\t"
-            f"{MSYS2}/ucrt64/{urllib.parse.quote(record['FILENAME'])}\t{source_url(name)}\n"
-        )
-        for path in files[package]:
+    inventory = ["Package\tVersion\tLicenses\tBinary SHA-256\tBinary package\tCorresponding source"]
+    for name in sorted(packages):
+        record = database[name]
+        version = versions[name]
+        if version != record["VERSION"]:
+            raise RuntimeError(f"Installed and repository versions of {name} differ")
+        filename = f"{record['BASE']}-{version.replace(':', '~')}.src.tar.zst"
+        filenames.add(filename)
+        licenses = ", ".join(record.get("LICENSE", "").splitlines())
+        url = MSYS2 + "/ucrt64/" + urllib.parse.quote(record["FILENAME"])
+        inventory.append(f"{name}\t{version}\t{licenses}\t{record['SHA256SUM']}\t{url}\t"
+                         + source_url(filename))
+        for path in files[name]:
             if path.startswith("share/licenses/"):
                 copy_file(prefix, path, bundle)
 
-    manifest = "".join(inventory)
-    (bundle / "MSYS2-packages.tsv").write_text(manifest, encoding="utf-8")
-    (sources / "MSYS2-packages.tsv").write_text(manifest, encoding="utf-8")
-    native_sources = sources / "MSYS2"
-    native_sources.mkdir()
-    filenames = sorted(filenames)
-    print(f"Collected {len(packages)} runtime package records. Downloading {len(filenames)} source archives.", flush=True)
+    for directory in (bundle, sources):
+        (directory / "MSYS2-packages.tsv").write_text("\n".join(inventory) + "\n", encoding="utf-8")
+    print(f"Collecting {len(filenames)} corresponding MSYS2 sources", flush=True)
     with ThreadPoolExecutor(max_workers=6) as pool:
-        list(pool.map(lambda name: download_source(name, native_sources), filenames))
-    verify_sources(msys, native_sources, filenames)
+        list(pool.map(lambda name: download_source(name, native_sources), sorted(filenames)))
+    verify_sources(msys, native_sources, sorted(filenames))
 
-    # Include the tracked source at this exact revision and locked Rust dependencies.
     run("git", "archive", "--format=tar", "-o", str(sources / "SpoolCut-source.tar"), "HEAD")
-    cargo_config = run("cargo", "vendor", "--locked", str(sources / "vendor"), capture=True)
-    # Cargo prints the local absolute vendor path. Use a relocatable path in the archive.
-    cargo_config = cargo_config.decode()
-    (sources / "vendor-config.toml").write_text(
-        re.sub(r'(?m)^directory = ".*"$', 'directory = "vendor"', cargo_config),
-        encoding="utf-8",
-    )
-    notices = bundle / "share/licenses/rust-crates"
-    for crate in (sources / "vendor").iterdir():
-        for license_file in crate.iterdir():
-            if license_file.is_file() and license_file.name.upper().startswith(
-                ("LICENSE", "LICENCE", "COPYING", "COPYRIGHT", "NOTICE")
-            ):
-                target = notices / crate.name / license_file.name
-                target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(license_file, target)
-    shutil.copy2("LICENSE", bundle / "LICENSE")
+    shutil.copy2("LICENSE", bundle)
     shutil.copy2("packaging/windows/PORTABLE.txt", bundle / "Read me.txt")
+    revision = run("git", "rev-parse", "HEAD", capture=True).decode()
+    build_config = run(str(bin_dir / "ffmpeg.exe"), "-hide_banner", "-buildconf", capture=True).decode()
+    if "--enable-nonfree" in build_config:
+        raise RuntimeError("Cannot redistribute this FFmpeg configuration")
+    for directory in (bundle, sources):
+        (directory / "source-revision.txt").write_text(revision, encoding="utf-8")
+        (directory / "FFmpeg-buildconf.txt").write_text(build_config, encoding="utf-8")
+    source_archive = output / (sources.name + ".tar.zst")
     run(str(msys / "usr/bin/tar.exe"), "--force-local", "--zstd", "-cf",
-        (output / "SpoolCut-Windows-sources.tar.zst").as_posix(),
-        "-C", sources.parent.as_posix(), sources.name)
-    with zipfile.ZipFile(output / "SpoolCut-Windows-x86_64.zip", "w", zipfile.ZIP_DEFLATED) as archive:
+        source_archive.as_posix(), "-C", scratch.as_posix(), sources.name)
+    zip_path = output / f"SpoolCut-{VERSION}-Windows-x86_64.zip"
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
         for path in sorted(bundle.rglob("*")):
             if path.is_file():
-                archive.write(path, path.relative_to(bundle.parent))
-    for path in output.iterdir():
-        if path.suffix in (".zip", ".zst"):
-            with path.open("rb") as file:
-                digest = hashlib.file_digest(file, "sha256").hexdigest()
-            (output / (path.name + ".sha256")).write_text(f"{digest}  {path.name}\n")
-
-
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("prefix", type=Path, help="native Windows path to the UCRT64 prefix")
-    parser.add_argument("output", type=Path)
-    args = parser.parse_args()
-    if os.environ.get("MSYSTEM") != "UCRT64":
-        parser.error("run this script from MSYS2 UCRT64")
-    # The source archive includes the committed tree. Refuse to package an
-    # uncommitted source tree whose binaries could differ from that archive.
-    dirty = run("git", "diff", "--name-only", "HEAD", "--", capture=True)
-    if dirty:
-        parser.error("commit the source changes before packaging: " + dirty.decode().strip())
-    output = args.output.resolve()
-    output.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="spoolcut-package-") as temp:
-        workspace = Path(temp)
-        bundle = workspace / "SpoolCut"
-        sources = workspace / "SpoolCut-Windows-sources"
-        sources.mkdir()
-        files = installed_files()
-        packages = copy_runtime(args.prefix, bundle, Path("target/release"), files)
-        write_archives(args.prefix, bundle, sources, output, packages, files)
+                archive.write(path, path.relative_to(scratch))
+    for path in (zip_path, source_archive):
+        with path.open("rb") as file:
+            digest = hashlib.file_digest(file, "sha256").hexdigest()
+        (output / (path.name + ".sha256")).write_text(f"{digest}  {path.name}\n")
 
 
 if __name__ == "__main__":
-    main()
+    prefix, executable, output = (Path(arg).resolve() for arg in sys.argv[1:])
+    if run("git", "status", "--porcelain", "--untracked-files=no", capture=True).strip():
+        sys.exit("Commit the SpoolCut source before packaging.")
+    output.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="spoolcut-package-") as scratch:
+        package(prefix, executable, output, Path(scratch))

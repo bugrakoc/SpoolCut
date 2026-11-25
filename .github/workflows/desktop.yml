@@ -1,0 +1,232 @@
+name: Desktop and packages
+
+on:
+  push:
+    branches: [main, cpp-qt]
+  pull_request:
+    branches: [main, cpp-qt]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-2025
+    timeout-minutes: 55
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git gnupg tar zstd
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-qt6-base
+            mingw-w64-ucrt-x86_64-mpv
+            mingw-w64-ucrt-x86_64-ffmpeg
+            mingw-w64-ucrt-x86_64-python
+      - name: Build and test native Qt and libmpv
+        run: |
+          set -euo pipefail
+          test "$MSYSTEM" = UCRT64
+          g++ --version
+          pkg-config --modversion Qt6Widgets mpv
+          ffmpeg -version
+          cmake -S . -B build-qt -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_COMPILE_WARNING_AS_ERROR=ON
+          cmake --build build-qt
+          ctest --test-dir build-qt -V -R '^desktop-'
+      - name: Package binaries, notices and corresponding source
+        run: |
+          set -euo pipefail
+          python packaging/windows/package.py "$(cygpath -m "$MINGW_PREFIX")" build-qt/spoolcut-desktop.exe dist-windows
+      - name: Exercise relocated binaries with system PATH
+        shell: pwsh
+        run: ./packaging/windows/smoke-portable.ps1
+      - name: Check portable ZIP and source checksums
+        working-directory: dist-windows
+        run: sha256sum -c *.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SpoolCut-Windows-x86_64
+          path: |
+            dist-windows/*.zip
+            dist-windows/*.zip.sha256
+          compression-level: 0
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SpoolCut-Windows-sources
+          path: |
+            dist-windows/*.tar.zst
+            dist-windows/*.tar.zst.sha256
+          compression-level: 0
+          if-no-files-found: error
+
+  linux:
+    runs-on: ubuntu-24.04
+    container: debian:trixie
+    timeout-minutes: 25
+    steps:
+      - name: Install native toolchain
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git ca-certificates g++ clang-tidy cmake ninja-build pkg-config \
+            qt6-base-dev qt6-wayland libmpv-dev ffmpeg libglib2.0-bin libgl1-mesa-dri weston xvfb xauth
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Build and test with X11 and Mesa software OpenGL
+        shell: bash
+        env:
+          LIBGL_ALWAYS_SOFTWARE: 1
+          SPOOLCUT_QT_REQUIRE_OPENGL: 1
+        run: |
+          g++ --version
+          pkg-config --modversion Qt6Widgets mpv
+          ffmpeg -version
+          cmake -S . -B build-qt -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_COMPILE_WARNING_AS_ERROR=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+          cmake --build build-qt
+          xvfb-run -a ctest --test-dir build-qt -V -R '^desktop-'
+      - name: Verify automatic fallback without an OpenGL surface
+        env:
+          QT_QPA_PLATFORM: offscreen
+          SPOOLCUT_QT_REQUIRE_FALLBACK: 1
+        run: ctest --test-dir build-qt -V -R '^desktop-auto$'
+      - name: Test headless Wayland with Mesa
+        shell: bash
+        env:
+          LIBGL_ALWAYS_SOFTWARE: 1
+          QT_QPA_PLATFORM: wayland
+          SPOOLCUT_QT_REQUIRE_OPENGL: 1
+        run: |
+          export XDG_RUNTIME_DIR="$(mktemp -d)"
+          export WAYLAND_DISPLAY=spoolcut-qt-ci
+          weston --backend=headless --renderer=gl --shell=kiosk-shell.so \
+            --socket="$WAYLAND_DISPLAY" --width=1280 --height=900 --idle-time=0 --no-config \
+            > weston-qt.log 2>&1 &
+          compositor=$!
+          trap 'kill "$compositor" 2>/dev/null || true; cat weston-qt.log' EXIT
+          for attempt in {1..50}; do
+            if test -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"; then break; fi
+            kill -0 "$compositor"
+            sleep 0.1
+          done
+          test -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
+          ctest --test-dir build-qt -V -R '^desktop-'
+      - name: Run ASan and UBSan
+        env:
+          QT_QPA_PLATFORM: offscreen
+          ASAN_OPTIONS: detect_leaks=0
+          UBSAN_OPTIONS: halt_on_error=1
+        run: |
+          cmake -S . -B build-qt-asan -G Ninja -DCMAKE_BUILD_TYPE=Debug -DSPOOLCUT_SANITIZERS=ON
+          cmake --build build-qt-asan
+          ctest --test-dir build-qt-asan -V -R '^desktop-software$'
+      - name: Run Clang static analysis
+        run: |
+          clang-tidy --quiet -p build-qt --warnings-as-errors='*' \
+            --checks='-*,bugprone-dangling-handle,bugprone-use-after-move,bugprone-sizeof-expression,bugprone-suspicious-memory-comparison' \
+            cpp/desktop/*.cpp
+
+  appimage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Build AppImage and gather corresponding source
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src debian:trixie bash -euxc '
+            apt-get update
+            apt-get install -y --no-install-recommends ca-certificates curl git g++ cmake ninja-build pkg-config python3 \
+              qt6-base-dev qt6-wayland qt6-xdgdesktopportal-platformtheme libmpv-dev ffmpeg squashfs-tools xz-utils zstd
+            sed -e "s/^Types: deb$/Types: deb-src/" /etc/apt/sources.list.d/debian.sources \
+              > /etc/apt/sources.list.d/debian-source.sources
+            apt-get update
+            git config --global --add safe.directory /src
+            cmake -S . -B build-qt-package -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
+            cmake --build build-qt-package
+            python3 packaging/linux/package-linux.py build-qt-package/spoolcut-desktop dist-linux
+          '
+      - name: Run relocated AppImage with Fedora 44 Wayland
+        run: |
+          docker run --rm -v "$PWD:/src:ro" -w /src --env EXPECTED_REVISION="$(git rev-parse HEAD)" fedora:44 bash -euxc '
+            dnf install -y weston mesa-dri-drivers libglvnd-egl libglvnd-glx libglvnd-opengl \
+              mesa-libgbm libdrm vulkan-loader libwayland-client libwayland-cursor libwayland-egl \
+              dejavu-sans-fonts xkeyboard-config desktop-file-utils
+            export XDG_RUNTIME_DIR="$(mktemp -d)"
+            export QT_QPA_PLATFORM=wayland WAYLAND_DISPLAY=spoolcut-fedora LIBGL_ALWAYS_SOFTWARE=1
+            weston --backend=headless --renderer=gl --shell=kiosk-shell.so \
+              --socket="$WAYLAND_DISPLAY" --width=1280 --height=900 --idle-time=0 --no-config \
+              >/tmp/weston.log 2>&1 &
+            compositor=$!
+            trap "kill $compositor 2>/dev/null || true; cat /tmp/weston.log" EXIT
+            for attempt in {1..70}; do
+              if test -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"; then break; fi
+              kill -0 "$compositor"
+              sleep 0.1
+            done
+            test -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
+            bash packaging/linux/smoke-appimage.sh dist-linux/SpoolCut-"$(cat VERSION)"-Fedora-x86_64.AppImage
+          '
+      - name: Check AppImage and source checksums
+        working-directory: dist-linux
+        run: sha256sum -c *.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SpoolCut-Fedora-x86_64
+          path: |
+            dist-linux/*.AppImage
+            dist-linux/*.AppImage.sha256
+          compression-level: 0
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SpoolCut-Linux-sources
+          path: |
+            dist-linux/*.tar.zst
+            dist-linux/*.tar.zst.sha256
+          compression-level: 0
+          if-no-files-found: error
+
+  compare:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    container: rust:1-trixie
+    timeout-minutes: 20
+    steps:
+      - run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git ca-certificates g++ cmake ninja-build pkg-config \
+            qt6-base-dev libgtk-4-dev libmpv-dev ffmpeg xvfb xauth xdotool python3-xlib dbus-x11
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Build both release editors
+        run: |
+          git -c safe.directory="$PWD" worktree add --detach /tmp/spoolcut-gtk 39cb4eecef8914f187871aac2187f8f023d14e0d
+          cargo build --manifest-path /tmp/spoolcut-gtk/Cargo.toml --locked --release --features desktop --bins
+          cmake -S . -B build-qt -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
+          cmake --build build-qt
+      - name: Compare CPU, memory, startup and scrubbing
+        run: |
+          dbus-run-session -- xvfb-run -a -s '-screen 0 1280x900x24' \
+            /usr/bin/python3 cpp/desktop/tests/compare-linux.py /tmp/spoolcut-gtk/target/release/spoolcut-desktop \
+            build-qt/spoolcut-desktop /tmp/spoolcut-gtk/target/release/spoolcut

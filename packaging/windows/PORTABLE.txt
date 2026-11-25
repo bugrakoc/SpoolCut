@@ -1,12 +1,14 @@
-SpoolCut for Windows 11 x86-64
+SpoolCut portable for Windows 11 x86-64
 
-Extract the entire ZIP. Open bin\SpoolCut.exe to use the editor, or run
-bin\spoolcut-cli.exe from a terminal for the command-line tool. Keep the bin,
-lib and share folders together. FFmpeg and ffprobe ship in the bin folder.
+Extract the complete ZIP. Open SpoolCut/bin/SpoolCut.exe from the extracted
+folder. Keep the files under bin together. Qt, libmpv, FFmpeg and FFprobe are
+bundled. The desktop defaults to software rendering. Set
+SPOOLCUT_QT_PREVIEW=opengl before launching to try the OpenGL preview.
 
-SpoolCut is licensed under GPL version 3. See LICENSE and share\licenses
-for notices. MSYS2-packages.tsv identifies the native packages in this build.
-The accompanying SpoolCut-Windows-sources.tar.zst contains the exact SpoolCut
-revision, Cargo dependencies, and corresponding MSYS2 source archives.
+The CLI is SpoolCut/bin/spoolcut-cli.exe. Run it with --help for usage.
+Projects and source media can live outside the extracted folder.
 
-Build and verification instructions are in docs\WINDOWS.md in the source.
+LICENSE contains the SpoolCut GPLv3 license. Third-party notices are under
+share/licenses. MSYS2-packages.tsv identifies exact binary and source
+packages. The matching Windows-sources archive is published alongside
+each distributed binary and includes source-revision.txt.
