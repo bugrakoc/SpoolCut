@@ -359,6 +359,7 @@ fn window_controls(window: &gtk::ApplicationWindow) -> gtk::Box {
     controls
 }
 
+#[cfg(not(windows))]
 fn label_window_button(button: &gtk::Button, label: &str) {
     button.set_tooltip_text(Some(label));
     button.update_property(&[gtk::accessible::Property::Label(label)]);

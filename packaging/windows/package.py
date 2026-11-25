@@ -224,7 +224,9 @@ def main():
         parser.error("run this script from MSYS2 UCRT64")
     # The source archive includes the committed tree. Refuse to package an
     # uncommitted source tree whose binaries could differ from that archive.
-    run("git", "diff", "--quiet", "HEAD", "--")
+    dirty = run("git", "diff", "--name-only", "HEAD", "--", capture=True)
+    if dirty:
+        parser.error("commit the source changes before packaging: " + dirty.decode().strip())
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="spoolcut-package-") as temp:
