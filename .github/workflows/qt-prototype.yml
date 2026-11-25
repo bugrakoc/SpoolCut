@@ -140,7 +140,7 @@ jobs:
           docker run --rm -v "$PWD:/src" -w /src debian:trixie bash -euxc '
             apt-get update
             apt-get install -y --no-install-recommends ca-certificates curl git g++ cmake ninja-build pkg-config python3 \
-              qt6-base-dev qt6-wayland libmpv-dev ffmpeg squashfs-tools zstd
+              qt6-base-dev qt6-wayland libmpv-dev ffmpeg squashfs-tools xz-utils zstd
             sed -e "s/^Types: deb$/Types: deb-src/" /etc/apt/sources.list.d/debian.sources \
               > /etc/apt/sources.list.d/debian-source.sources
             apt-get update
