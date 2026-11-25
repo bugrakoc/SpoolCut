@@ -24,9 +24,9 @@ def run(*args, capture=False, cwd=None):
     return subprocess.run(args, check=True, capture_output=capture, cwd=cwd).stdout
 
 
-def package_database():
-    db_path = run("cygpath", "-m", "/var/lib/pacman/sync/ucrt64.db", capture=True).decode().strip()
-    data = run("zstd", "-dc", db_path, capture=True)
+def package_database(msys):
+    db_path = msys / "var/lib/pacman/sync/ucrt64.db"
+    data = run(str(msys / "usr/bin/zstd.exe"), "-dc", db_path.as_posix(), capture=True)
     packages = {}
     with tarfile.open(fileobj=io.BytesIO(data)) as database:
         for member in database:
@@ -131,12 +131,11 @@ def download_source(name, directory):
                     shutil.copyfileobj(response, output)
         except OSError as error:
             raise RuntimeError(f"Cannot fetch corresponding source: {url}") from error
-    run("bash", "/usr/bin/pacman-key", "--verify",
-        (directory / (name + ".sig")).as_posix(), (directory / name).as_posix())
 
 
 def write_archives(prefix, bundle, sources, output, packages):
-    database = package_database()
+    msys = prefix.parent
+    database = package_database(msys)
     versions = dict(
         entry.split(maxsplit=1)
         for entry in run("pacman", "-Q", capture=True).decode().splitlines()
@@ -166,8 +165,16 @@ def write_archives(prefix, bundle, sources, output, packages):
     (sources / "MSYS2-packages.tsv").write_text(manifest, encoding="utf-8")
     native_sources = sources / "MSYS2"
     native_sources.mkdir()
+    filenames = sorted(filenames)
     with ThreadPoolExecutor(max_workers=6) as pool:
-        list(pool.map(lambda name: download_source(name, native_sources), sorted(filenames)))
+        list(pool.map(lambda name: download_source(name, native_sources), filenames))
+    # Use MSYS2 Bash explicitly. Windows may resolve an unqualified bash.exe
+    # to the WSL launcher before consulting PATH.
+    bash = str(msys / "usr/bin/bash.exe")
+    for name in filenames:
+        archive = native_sources / name
+        run(bash, "/usr/bin/pacman-key", "--verify",
+            archive.with_name(name + ".sig").as_posix(), archive.as_posix())
 
     # Include the tracked source at this exact revision and locked Rust dependencies.
     run("git", "archive", "--format=tar", "-o", str(sources / "SpoolCut-source.tar"), "HEAD")
@@ -189,8 +196,9 @@ def write_archives(prefix, bundle, sources, output, packages):
                 shutil.copy2(license_file, target)
     shutil.copy2("LICENSE", bundle / "LICENSE")
     shutil.copy2("packaging/windows/PORTABLE.txt", bundle / "Read me.txt")
-    run("tar", "--zstd", "-cf", str(output / "SpoolCut-Windows-sources.tar.zst"),
-        "-C", str(sources.parent), sources.name)
+    run(str(msys / "usr/bin/tar.exe"), "--zstd", "-cf",
+        (output / "SpoolCut-Windows-sources.tar.zst").as_posix(),
+        "-C", sources.parent.as_posix(), sources.name)
     with zipfile.ZipFile(output / "SpoolCut-Windows-x86_64.zip", "w", zipfile.ZIP_DEFLATED) as archive:
         for path in sorted(bundle.rglob("*")):
             if path.is_file():
