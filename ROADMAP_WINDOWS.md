@@ -30,14 +30,16 @@ project JSON, packet verification and lossless export rules are shared.
 
 - [x] Add CI packaging for the app, FFmpeg, ffprobe, Windows DLL closure, GTK
   resources and notices.
-- [ ] Verify the relocated ZIP on a Windows runner with the development PATH removed.
-- [ ] Record the exact inputs for redistribution and make matching corresponding
+- [x] Verify the relocated ZIP on a Windows runner with the development PATH removed.
+- [x] Record the exact inputs for redistribution and make matching corresponding
   source, build recipes and patches available with the binaries.
 - [ ] Unzip and run on a clean Windows 11 VM without developer tools installed.
   Verify the file picker, playback with sound and export. Repeat using a second
   drive and an exFAT volume, including an existing or locked output.
 
 ## 4. Release verification
+
+The [first passing package build](https://github.com/bugrakoc/SpoolCut/actions/runs/45530147921) contains the Windows ZIP and its corresponding source archive. The hosted Windows runner exercised the software renderer and the OpenGL fallback.
 
 - [x] Run the native Windows and Linux Wayland smoke tests in CI.
 - [ ] Repeat the editor and export tests on Fedora hardware.

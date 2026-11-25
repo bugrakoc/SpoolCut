@@ -70,9 +70,11 @@ Actions artifacts expire, so copy both archives into any published release.
 
 ## Clean Windows 11 VM checklist
 
-Use the ZIP from the draft PR's successful Windows run. Extract the full ZIP
-into a directory with spaces and a non-ASCII character, then double-click
-`SpoolCut/bin/SpoolCut.exe` on a VM without MSYS2 or FFmpeg installed.
+Download the [Windows artifact](https://github.com/bugrakoc/SpoolCut/actions/runs/45530147921/artifacts/14985385477)
+from the first passing CI run. GitHub wraps the portable ZIP and its SHA-256
+checksum in an outer ZIP. Extract both layers into a directory with spaces
+and a non-ASCII character, then double-click `SpoolCut/bin/SpoolCut.exe` on
+a VM without MSYS2 or FFmpeg installed.
 
 1. Check the Explorer and taskbar icons, minimize/maximize/restore/close and
    native file pickers at 100%, 150% and 200% scaling. If available, move the
@@ -88,8 +90,8 @@ into a directory with spaces and a non-ASCII character, then double-click
    a destination that already exists.
 5. Open and close the editor several times. To try WGL, run
    `$env:SPOOLCUT_PREVIEW = 'opengl'` in PowerShell and then launch
-   `& .\SpoolCut\bin\SpoolCut.exe` from that shell. Repeat playback and seeking. Record the preview
-   tooltip and whether the VM exposes accelerated graphics. If the VM falls
+   `& .\SpoolCut\bin\SpoolCut.exe` from that shell. Repeat playback and seeking,
+   then record the preview tooltip and whether the VM exposes accelerated graphics. If the VM falls
    back to software, WGL still needs validation on a Windows system with
    working OpenGL drivers.
 
