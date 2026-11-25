@@ -65,6 +65,28 @@ def copy_runtime(prefix, bundle, release, files):
         query_loaders = prefix / "bin/gdk-pixbuf-query-loaders.exe"
         roots.append((query_loaders, bin_dir / query_loaders.name))
 
+    packages = copy_pe_runtime(prefix, bin_dir, roots, files)
+
+    for package in ("gtk4", "glib2", "fontconfig", "adwaita-icon-theme", "hicolor-icon-theme"):
+        owner = UCRT + package
+        packages.add(owner)
+        for path in files[owner]:
+            if path.startswith((
+                "share/icons/", "share/glib-2.0/schemas/", "share/gtk-4.0/",
+                "share/locale/", "etc/fonts/",
+            )):
+                copy_file(prefix, path, bundle)
+    schemas = bundle / "share/glib-2.0/schemas"
+    if schemas.is_dir():
+        run(str(prefix / "bin/glib-compile-schemas.exe"), "--strict", str(schemas))
+    if loaders:
+        helper = bin_dir / "gdk-pixbuf-query-loaders.exe"
+        run(str(helper), "--update-cache")
+        helper.unlink()
+    return packages
+
+
+def copy_pe_runtime(prefix, bin_dir, roots, files):
     packages = set()
     owners = {path: package for package, paths in files.items() for path in paths}
     known_dlls = {p.name.lower(): p for p in (prefix / "bin").glob("*.dll")}
@@ -92,23 +114,6 @@ def copy_runtime(prefix, bundle, release, files):
                 or (Path(os.environ["SystemRoot"]) / "System32" / lower).is_file()
             ):
                 raise RuntimeError(f"Missing DLL {name} imported by {source.name}")
-
-    for package in ("gtk4", "glib2", "fontconfig", "adwaita-icon-theme", "hicolor-icon-theme"):
-        owner = UCRT + package
-        packages.add(owner)
-        for path in files[owner]:
-            if path.startswith((
-                "share/icons/", "share/glib-2.0/schemas/", "share/gtk-4.0/",
-                "share/locale/", "etc/fonts/",
-            )):
-                copy_file(prefix, path, bundle)
-    schemas = bundle / "share/glib-2.0/schemas"
-    if schemas.is_dir():
-        run(str(prefix / "bin/glib-compile-schemas.exe"), "--strict", str(schemas))
-    if loaders:
-        helper = bin_dir / "gdk-pixbuf-query-loaders.exe"
-        run(str(helper), "--update-cache")
-        helper.unlink()
     return packages
 
 

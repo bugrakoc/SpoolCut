@@ -1,0 +1,47 @@
+cmake_minimum_required(VERSION 3.22)
+project(SpoolCutQtPrototype VERSION 0.1.0 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_AUTOMOC ON)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Widgets OpenGLWidgets)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(MPV REQUIRED IMPORTED_TARGET mpv>=2.3)
+
+option(SPOOLCUT_SANITIZERS "Enable ASan and UBSan with GCC/Clang" OFF)
+if(SPOOLCUT_SANITIZERS)
+    if(WIN32 OR NOT CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        message(FATAL_ERROR "Use the Linux GCC or Clang build for sanitizers")
+    endif()
+    add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=address,undefined)
+endif()
+
+add_library(prototype-widgets STATIC preview.cpp timeline.cpp window.cpp)
+target_link_libraries(prototype-widgets PUBLIC Qt6::Widgets Qt6::OpenGLWidgets PkgConfig::MPV)
+target_include_directories(prototype-widgets PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_options(prototype-widgets PRIVATE -Wall -Wextra -Wpedantic)
+
+qt_add_executable(spoolcut-qt WIN32 main.cpp)
+qt_add_resources(spoolcut-qt "spoolcut-icon"
+    PREFIX "/" BASE "../assets" FILES "../assets/io.github.bugrakoc.SpoolCut.png")
+target_link_libraries(spoolcut-qt PRIVATE prototype-widgets)
+if(WIN32)
+    enable_language(RC)
+    target_sources(spoolcut-qt PRIVATE spoolcut.rc)
+    target_include_directories(spoolcut-qt PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+endif()
+
+include(CTest)
+if(BUILD_TESTING)
+    find_package(Qt6 6.8 REQUIRED COMPONENTS Test)
+    qt_add_executable(prototype-tests tests/prototype_test.cpp)
+    target_link_libraries(prototype-tests PRIVATE prototype-widgets Qt6::Test)
+    foreach(mode software auto)
+        add_test(NAME prototype-${mode} COMMAND prototype-tests)
+        set_tests_properties(prototype-${mode} PROPERTIES
+            ENVIRONMENT "SPOOLCUT_QT_PREVIEW=${mode};SPOOLCUT_QT_TEST_AUDIO_NULL=1"
+            TIMEOUT 100)
+    endforeach()
+endif()
