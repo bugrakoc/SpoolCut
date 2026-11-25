@@ -1,4 +1,4 @@
-"""Build the Qt prototype portable ZIP and its corresponding source archive."""
+"""Build the Qt desktop and CLI portable ZIP with corresponding source."""
 
 from concurrent.futures import ThreadPoolExecutor
 import hashlib
@@ -17,7 +17,7 @@ from package import (
 
 
 def package(prefix, executable, output, scratch):
-    bundle = scratch / "SpoolCut Qt Prototype"
+    bundle = scratch / "SpoolCut Qt"
     bin_dir = bundle / "bin"
     sources = scratch / "SpoolCut-Qt-Windows-sources"
     native_sources = sources / "MSYS2"
@@ -28,6 +28,7 @@ def package(prefix, executable, output, scratch):
     if len(qt_platforms) != 1:
         raise RuntimeError(f"Expected one Qt Windows plugin, found {qt_platforms}")
     roots = [(executable, bin_dir / "SpoolCutQt.exe"),
+             (executable.with_name("spoolcut.exe"), bin_dir / "spoolcut.exe"),
              (prefix / qt_platforms[0], bin_dir / "plugins/platforms/qwindows.dll")]
     for tool in ("ffmpeg.exe", "ffprobe.exe"):
         roots.append((prefix / "bin" / tool, bin_dir / tool))
@@ -85,7 +86,7 @@ def package(prefix, executable, output, scratch):
 if __name__ == "__main__":
     prefix, executable, output = (Path(arg).resolve() for arg in sys.argv[1:])
     if run("git", "status", "--porcelain", "--untracked-files=no", capture=True).strip():
-        sys.exit("Commit the prototype source before packaging.")
+        sys.exit("Commit the SpoolCut source before packaging.")
     output.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="spoolcut-qt-") as scratch:
         package(prefix, executable, output, Path(scratch))

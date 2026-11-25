@@ -1,9 +1,9 @@
-name: Qt feasibility prototype
+name: Qt desktop parity and packages
 
 on:
   push:
     branches: [cpp-qt]
-    paths: ["qt-prototype/**", "packaging/windows/package.py", ".github/workflows/qt-prototype.yml"]
+    paths: ["qt-prototype/**", "cpp/**", "packaging/windows/package.py", ".github/workflows/qt-prototype.yml"]
   workflow_dispatch:
 
 permissions:

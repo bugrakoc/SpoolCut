@@ -321,3 +321,22 @@ rapid scrubbing, source switches, resize and teardown. The seven core
 differential tests also passed locally after the shared library build
 change. The native Linux/Windows package checks and manual machine
 checks are tracked in Milestone E.
+
+## E. Replacement package verification
+
+The migration packages build the Qt desktop and standalone CLI against the
+same library. Both packages carry native Qt plugins, libmpv, FFmpeg and
+ffprobe. The Windows ZIP also exposes `spoolcut.exe` in its `bin` directory.
+The Fedora AppImage dispatches `--cli` to the bundled console executable.
+The package smoke scripts use relocated paths with spaces and Unicode and a
+system-only PATH. They inspect, plan, export and decode generated AVC and
+HEVC Main 10 files with bundled tools. The desktop still verifies decoded
+video and audio with the selected renderer.
+
+The local Debian software-renderer suite also passed under ASan and UBSan
+with third-party leak detection disabled. The first hosted ASan/UBSan desktop
+run failed a rapid-scrubbing assertion. It sampled the red and blue channels
+from separate widget grabs, which can render different frames. The test now
+uses both channels from one image per attempt. Package archive smoke, hardware
+retests, and the final feature and performance review are pending. Keep the
+Rust production paths available through those gates.

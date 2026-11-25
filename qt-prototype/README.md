@@ -45,8 +45,10 @@ any fallback reason. Both renderers use CPU video decoding.
 
 ## Windows portable ZIP
 
-Extract the ZIP and run `SpoolCut Qt Prototype/bin/SpoolCutQt.exe`. The
-package contains its own Qt platform plugin, libmpv and media tools. Keep the
+Extract the ZIP and run `SpoolCut Qt/bin/SpoolCutQt.exe`. The
+package contains its own Qt platform plugin, libmpv and media tools. The
+bundled CLI is at `SpoolCut Qt/bin/spoolcut.exe` and supports `inspect`,
+`plan` and `export`. Keep the
 matching source archive available alongside the binary if redistributing.
 
 ## Manual checks
@@ -78,4 +80,6 @@ multimedia libraries and uses the Fedora host's graphics drivers. On launch it
 installs a per-user desktop entry for the prototype's own app ID. On KDE it
 requests the file picker through the session's XDG Desktop Portal. If user-mode
 FUSE is unavailable, run `./SpoolCut-Qt-Fedora-x86_64.AppImage --appimage-extract-and-run`.
-Keep the matching Linux source archive available if redistributing the AppImage.
+Use `./SpoolCut-Qt-Fedora-x86_64.AppImage --cli --help` to run the bundled
+CLI. Keep the matching Linux source archive available if redistributing the
+AppImage.

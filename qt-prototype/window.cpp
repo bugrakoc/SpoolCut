@@ -10,6 +10,7 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QKeySequence>
+#include <QLabel>
 #include <QListWidget>
 #include <QMenuBar>
 #include <QMessageBox>
@@ -55,12 +56,22 @@ qint64 timelineTime(double time, qint64 end)
     return micros <= 0 ? 0 : static_cast<qint64>(micros);
 }
 
+QString timecode(qint64 micros)
+{
+    const auto ms = micros / 1'000;
+    const auto whole = ms / 1'000;
+    return u"%1:%2:%3.%4"_s.arg(whole / 3600, 2, 10, QLatin1Char('0'))
+                           .arg(whole / 60 % 60, 2, 10, QLatin1Char('0'))
+                           .arg(whole % 60, 2, 10, QLatin1Char('0'))
+                           .arg(ms % 1000, 3, 10, QLatin1Char('0'));
+}
+
 QString errorText(const std::exception &error) { return QString::fromUtf8(error.what()); }
 }
 
 Window::Window()
     : preview_(new Preview(this)), timeline_(new Timeline(this)), media_(new MediaBin(this)),
-      progress_(new QProgressBar(this))
+      progress_(new QProgressBar(this)), clock_(new QLabel(this)), clipInfo_(new QLabel(this))
 {
     setAcceptDrops(true);
     resize(960, 660);
@@ -148,7 +159,9 @@ Window::Window()
     toolbar->addActions({export_, cancelAction_});
     progress_->setMaximumWidth(155);
     progress_->hide();
+    statusBar()->addPermanentWidget(clipInfo_);
     statusBar()->addPermanentWidget(progress_);
+    statusBar()->addPermanentWidget(clock_);
 
     connect(media_, &QListWidget::currentItemChanged, this, &Window::controls);
     connect(media_, &QListWidget::itemDoubleClicked, this, [this] { insert(selectedSource(), clipCount()); });
@@ -172,6 +185,7 @@ Window::Window()
         const auto &segment = segments_[*current_];
         positionUs_ = segment.startUs + timelineTime(sourceTime - segment.sourceStart, segment.endUs - segment.startUs);
         timeline_->setPosition(seconds(positionUs_), true);
+        updateClock();
     });
     connect(preview_, &Preview::ended, this, &Window::advance);
     controls();
@@ -517,6 +531,22 @@ void Window::controls()
     redo_->setEnabled(ready && editor_.canRedo());
     export_->setEnabled(ready && !segments_.empty());
     cancelAction_->setEnabled(!ready && !cancel_->load(std::memory_order_relaxed));
+    updateClock();
+
+    const bool showCut = selected_ && *selected_ < segments_.size();
+    clipInfo_->setVisible(showCut);
+    if (showCut) {
+        const auto &segment = segments_[*selected_];
+        clipInfo_->setText(tr("In %1 s   Out %2 s").arg(segment.sourceStart, 0, 'f', 3)
+                                                 .arg(segment.sourceEnd, 0, 'f', 3));
+    }
+}
+
+void Window::updateClock()
+{
+    clock_->setVisible(!segments_.empty());
+    if (!segments_.empty())
+        clock_->setText(u"%1 / %2"_s.arg(timecode(positionUs_), timecode(segments_.back().endUs)));
 }
 
 void Window::edit(const std::function<void()> &operation)
@@ -665,6 +695,7 @@ void Window::seek(qint64 time, bool playing)
         return;
     positionUs_ = std::clamp(time, qint64{0}, segments_.back().endUs);
     timeline_->setPosition(seconds(positionUs_), playing);
+    updateClock();
     const auto row = *segmentAt(positionUs_);
     const auto &segment = segments_[row];
     const auto &clip = editor_.project().clips[row];
@@ -720,6 +751,7 @@ void Window::advance()
     else {
         positionUs_ = segments_.back().endUs;
         timeline_->setPosition(seconds(positionUs_), true);
+        updateClock();
         setPlaying(false);
     }
 }

@@ -8,6 +8,7 @@
 
 class Preview;
 class Timeline;
+class QLabel;
 class QListWidget;
 class QProgressBar;
 
@@ -53,6 +54,7 @@ private:
     void pickRelink();
     void refresh();
     void controls();
+    void updateClock();
     void report(const QString &message);
     void edit(const std::function<void()> &operation);
     QString selectedSource() const;
@@ -83,6 +85,8 @@ private:
     Timeline *timeline_;
     QListWidget *media_;
     QProgressBar *progress_;
+    QLabel *clock_;
+    QLabel *clipInfo_;
     QAction *play_;
     QAction *append_;
     QAction *relink_;

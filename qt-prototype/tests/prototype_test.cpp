@@ -267,7 +267,17 @@ private slots:
                 const auto shot = gl ? gl->grabFramebuffer() : window.preview()->grab().toImage();
                 return shot.pixelColor(shot.width() / 2, shot.height() / 2);
             };
-            QTRY_VERIFY_WITH_TIMEOUT(color().red() > 180 && color().blue() < 70, 3000);
+            // Grabbing the widget can render a new frame. Read both channels
+            // from the same image and avoid re-evaluating a successful sample.
+            const auto redShown = [&] {
+                const auto pixel = color();
+                return pixel.red() > 180 && pixel.blue() < 70;
+            };
+            const auto blueShown = [&] {
+                const auto pixel = color();
+                return pixel.blue() > 180 && pixel.red() < 70;
+            };
+            QVERIFY(QTest::qWaitFor(redShown, 3000));
             window.togglePlayback();
             QTRY_VERIFY_WITH_TIMEOUT(window.preview()->position() > 0.20, 5000);
 
@@ -277,7 +287,7 @@ private slots:
             const auto ended = connect(window.preview(), &Preview::ended, &window, [&] { join.start(); });
             window.togglePlayback();
             QTRY_VERIFY_WITH_TIMEOUT(join.isValid(), 5000);
-            QTRY_VERIFY_WITH_TIMEOUT(color().blue() > 180 && color().red() < 70, 5000);
+            QVERIFY(QTest::qWaitFor(blueShown, 5000));
             std::fprintf(stdout, "Automatic join to visible frame: %lld ms\n",
                          static_cast<long long>(join.elapsed()));
             std::fflush(stdout);
@@ -290,7 +300,7 @@ private slots:
             }
             QSignalSpy positions(window.preview(), &Preview::positionChanged);
             window.scrub(5.25);
-            QTRY_VERIFY_WITH_TIMEOUT(color().blue() > 180 && color().red() < 70, 10000);
+            QVERIFY(QTest::qWaitFor(blueShown, 10000));
             QTRY_VERIFY_WITH_TIMEOUT(!positions.isEmpty()
                 && qAbs(positions.last().at(0).toDouble() - 1.25) < 0.12, 5000);
             QTest::qWait(160); // Allow the seek to settle on a decoded frame timestamp.
@@ -298,13 +308,13 @@ private slots:
             QTest::qWait(160);
             QCOMPARE(window.preview()->position(), paused);
             window.scrub(0.75);
-            QTRY_VERIFY_WITH_TIMEOUT(color().red() > 180 && color().blue() < 70, 10000);
+            QVERIFY(QTest::qWaitFor(redShown, 10000));
             QCOMPARE(failures.size(), 0);
             window.clear();
             QCOMPARE(window.clipCount(), 0);
             window.importFiles({hevc}, true);
             QTRY_COMPARE_WITH_TIMEOUT(window.clipCount(), 1, 10000);
-            QTRY_VERIFY_WITH_TIMEOUT(color().blue() > 180, 10000);
+            QVERIFY(QTest::qWaitFor(blueShown, 10000));
             window.clear();
             window.close();
         }

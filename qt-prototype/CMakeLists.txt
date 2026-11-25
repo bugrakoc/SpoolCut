@@ -24,7 +24,7 @@ else()
     set(mpv_target PkgConfig::MPV)
 endif()
 
-add_subdirectory(../cpp/core shared-core)
+add_subdirectory(../cpp shared-cli)
 
 add_library(prototype-widgets STATIC editor.cpp preview.cpp timeline.cpp window.cpp)
 target_link_libraries(prototype-widgets PUBLIC spoolcut-core Qt6::Widgets Qt6::OpenGLWidgets ${mpv_target})

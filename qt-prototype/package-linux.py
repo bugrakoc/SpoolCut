@@ -1,4 +1,4 @@
-"""Bundle the Debian Qt prototype and codec-enabled media tools for Fedora x86-64."""
+"""Bundle the Qt desktop, CLI and codec-enabled media tools for Fedora x86-64."""
 
 import hashlib
 from pathlib import Path
@@ -43,7 +43,9 @@ def copy(source, target):
 
 def bundle(exe, app):
     files = set()
+    cli = exe.with_name("spoolcut")
     roots = [(exe, app / "bin/spoolcut-qt"),
+             (cli, app / "bin/spoolcut"),
              (Path("/usr/bin/ffmpeg"), app / "bin/ffmpeg"),
              (Path("/usr/bin/ffprobe"), app / "bin/ffprobe")]
     platforms = [QT_PLUGINS / "platforms/libqxcb.so",
@@ -57,7 +59,7 @@ def bundle(exe, app):
     roots.extend((p, app / "plugins" / p.relative_to(QT_PLUGINS)) for p in platforms)
     for source, target in roots:
         copy(source, target)
-        if source != exe:
+        if source not in {exe, cli}:
             files.add(source)
         dependencies = output("ldd", source)
         if "not found" in dependencies:
@@ -118,7 +120,7 @@ def collect_sources(files, app, sources):
 def main():
     executable, dist = (Path(arg).resolve() for arg in sys.argv[1:])
     if output("git", "status", "--porcelain", "--untracked-files=no"):
-        sys.exit("Commit the prototype source before packaging.")
+        sys.exit("Commit the SpoolCut source before packaging.")
     dist.mkdir(parents=True, exist_ok=True)
     app = dist / "SpoolCutQt.AppDir"
     app.mkdir()

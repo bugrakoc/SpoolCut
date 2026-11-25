@@ -6,11 +6,7 @@ include(CTest)
 find_package(Qt6 6.8 REQUIRED COMPONENTS Core)
 message(STATUS "Using Qt ${Qt6_VERSION}")
 
-add_subdirectory(cpp/core)
-
-add_executable(spoolcut cpp/main.cpp)
-target_link_libraries(spoolcut PRIVATE spoolcut-core)
-spoolcut_target(spoolcut)
+add_subdirectory(cpp)
 
 if(BUILD_TESTING)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)

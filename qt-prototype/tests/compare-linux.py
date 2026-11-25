@@ -143,7 +143,7 @@ def main():
                    ALSA_CONFIG_PATH=str(alsa))
         xserver = display.Display()
         results = {"GTK": [], "Qt": []}
-        apps = [(gtk, [project], False, "GTK"), (qt, files, True, "Qt")]
+        apps = [(gtk, [project], False, "GTK"), (qt, [project], True, "Qt")]
         for trial in range(3):
             for app, inputs, is_qt, label in apps[::(-1 if trial % 2 else 1)]:
                 values = compare(xserver, app, inputs, is_qt, env)
