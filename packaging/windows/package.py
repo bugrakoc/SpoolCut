@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 import tarfile
 import tempfile
 import time
@@ -22,7 +23,13 @@ UCRT = "mingw-w64-ucrt-x86_64-"
 
 
 def run(*args, capture=False, cwd=None):
-    return subprocess.run(args, check=True, capture_output=capture, cwd=cwd).stdout
+    try:
+        return subprocess.run(args, check=True, capture_output=capture, cwd=cwd).stdout
+    except subprocess.CalledProcessError as error:
+        if error.stderr:
+            sys.stderr.buffer.write(error.stderr)
+            sys.stderr.flush()
+        raise
 
 
 def package_database(msys):
@@ -147,17 +154,22 @@ def verify_sources(msys, directory, filenames):
     # its trust database or relying on access to its private key directory.
     keyring = msys / "usr/share/pacman/keyrings"
     revoked = set((keyring / "msys2-revoked").read_text().split())
-    verifier = str(msys / "usr/bin/gpgv.exe")
+    msys_bin = msys / "usr/bin"
+    cygpath = str(msys_bin / "cygpath.exe")
+    def posix_path(path):
+        return run(cygpath, "-u", str(path), capture=True).decode().strip()
+
+    verifier = str(msys_bin / "gpgv.exe")
+    source_dir = posix_path(directory)
     with tempfile.TemporaryDirectory(prefix="spoolcut-gpg-") as home:
-        public_keys = (Path(home) / "msys2.gpg").as_posix()
-        run(str(msys / "usr/bin/gpg.exe"), "--batch", "--homedir", Path(home).as_posix(),
-            "--dearmor", "--output", public_keys, (keyring / "msys2.gpg").as_posix())
+        home = posix_path(home)
+        public_keys = f"{home}/msys2.gpg"
+        run(str(msys_bin / "gpg.exe"), "--batch", "--homedir", home, "--dearmor",
+            "--output", public_keys, posix_path(keyring / "msys2.gpg"))
         for name in filenames:
-            archive = directory / name
-            signature = archive.with_name(name + ".sig")
-            status = run(verifier, "--homedir", Path(home).as_posix(), "--keyring",
-                         public_keys, "--status-fd", "1", signature.as_posix(),
-                         archive.as_posix(), capture=True).decode()
+            archive = f"{source_dir}/{name}"
+            status = run(verifier, "--homedir", home, "--keyring", public_keys,
+                         "--status-fd", "1", archive + ".sig", archive, capture=True).decode()
             valid = [line.split() for line in status.splitlines()
                      if line.startswith("[GNUPG:] VALIDSIG ")]
             if not valid or any(fields[2] in revoked or fields[-1] in revoked for fields in valid):
