@@ -286,7 +286,38 @@ built with Rust 1.85.1.
 - **C:** Automated core parity passed on Linux and Windows. Check original
   Main 10 footage with the affected player and removable/exFAT behavior during
   platform acceptance.
-- **D:** Desktop feature parity is outstanding. The verified Qt prototype is
-  the starting point for integration with the shared core.
+- **D:** Qt desktop integrated with the shared core and exercised locally.
+  Native CI and maintainer retests are required for sign-off.
 - **E:** Replacement builds, packaging acceptance and release review are
   outstanding. Prototype packages and their smoke results are recorded above.
+
+## D. Qt desktop integration
+
+The approved Qt Widgets window, custom timeline and libmpv renderer now use
+the same C++ core as the CLI. Open and save existing SpoolCut JSON projects,
+import or relink media, and append or drag sources from the bin. The bin
+shows resolution, codec, frame rate and unavailable sources. Timeline edits
+keep the project’s integer PTS and validate candidate ranges with the
+stream-copy planner. The ruler snaps clicks to safe points and supports
+drag scrubbing, zoom and pan. The editor supports clip reordering, edge
+trim, split, cut/copy/paste and undo/redo. Preview opens the effective
+source range at the planned frame and advances across clips. Windows
+defaults to software preview. Explicit OpenGL selection remains available.
+
+Indexing and export run in a cancellable worker. The UI reports progress
+and errors. Closing requests cancellation and joins the worker before
+teardown. Both frontends use the native no-overwrite Matroska export
+pipeline. The source-format and lossless-export rules remain in section C.
+
+Build and run the desktop with the commands in the
+[Qt desktop README](../qt-prototype/README.md). On Debian 13 with GCC 14.2,
+Qt 6.8.2, libmpv 0.40 and FFmpeg 7.1.5, the desktop compiled with warnings
+as errors. The local software smoke verified proportional geometry, ruler
+snapping, clip and edge gestures, exact project reopen, missing media,
+relink validation, trim/split/undo/redo, a lossless export, cancellation
+during staging and preservation of an existing destination. The H.264 and
+Main 10 HEVC preview lifecycle cases verified decoded video and audio,
+rapid scrubbing, source switches, resize and teardown. The seven core
+differential tests also passed locally after the shared library build
+change. The native Linux/Windows package checks and manual machine
+checks are tracked in Milestone E.

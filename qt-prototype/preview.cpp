@@ -66,7 +66,7 @@ public:
         const std::pair<const char *, const char *> options[] = {
             {"config", "no"}, {"terminal", "no"}, {"vo", "libmpv"}, {"profile", "fast"},
             {"hwdec", "no"}, {"idle", "yes"}, {"pause", "yes"},
-            {"keep-open", "yes"}, {"load-scripts", "no"}, {"osc", "no"},
+            {"keep-open", "yes"}, {"rebase-start-time", "no"}, {"hr-seek", "yes"}, {"load-scripts", "no"}, {"osc", "no"},
             {"input-default-bindings", "no"}, {"audio-display", "no"},
             {"audio-file-auto", "no"}, {"sub-auto", "no"}, {"osd-level", "0"}
         };
@@ -102,9 +102,10 @@ public:
         loaded_ = false;
     }
 
-    void open(const QString &path, double seconds, bool playing) {
+    void open(const QString &path, double seconds, bool playing, std::optional<double> end) {
         path_ = path;
         requested_ = seconds;
+        end_ = end;
         playing_ = playing;
         ++sourceVersion_;
         if (!loading_ && render_)
@@ -178,14 +179,24 @@ private:
         const double start = requested_.value_or(0.0);
         requested_.reset();
         applyPause();
-        // Let mpv start at the requested position on the first decode. At a
-        // join, load from the beginning without a second, redundant exact seek.
-        if (start > 0.0) {
-            const QByteArray option = "start=" + QByteArray::number(start, 'f', 6);
-            send(1, {"loadfile", file.constData(), "replace", "-1", option.constData()});
-        } else {
-            send(1, {"loadfile", file.constData(), "replace"});
+        // Start and end at the editor's effective frame range on the initial load.
+        QByteArray options;
+        const auto timeOption = [](double seconds) {
+            // A bare minus in a load option is relative to the end of the file.
+            const auto value = QByteArray::number(seconds, 'f', 9);
+            return seconds < 0.0 ? ' ' + value : value;
+        };
+        if (start != 0.0 || end_)
+            options = "start=" + timeOption(start);
+        if (end_) {
+            if (!options.isEmpty())
+                options += ',';
+            options += "end=" + timeOption(*end_);
         }
+        if (options.isEmpty())
+            send(1, {"loadfile", file.constData(), "replace"});
+        else
+            send(1, {"loadfile", file.constData(), "replace", "-1", options.constData()});
     }
 
     void finishLoad(const QString &error) {
@@ -236,7 +247,7 @@ private:
             }
         }
         if (loaded_ && requested_) {
-            const QByteArray value = QByteArray::number(*requested_, 'f', 6);
+            const QByteArray value = QByteArray::number(*requested_, 'f', 9);
             requested_.reset();
             send(2, {"seek", value.constData(), "absolute+exact"});
         }
@@ -253,6 +264,7 @@ private:
     std::unique_ptr<mpv_render_context, RenderDeleter> render_;
     QString path_;
     std::optional<double> requested_;
+    std::optional<double> end_;
     uint64_t sourceVersion_ = 0;
     uint64_t loadingVersion_ = 0;
     std::optional<int64_t> activeEntry_;
@@ -310,7 +322,7 @@ protected:
             return;
         }
         // bgr0 leaves the last byte undefined. Use an opaque RGB image view.
-        QImage image(static_cast<uchar *>(aligned), size.width(), size.height(), stride,
+        QImage image(static_cast<uchar *>(aligned), size.width(), size.height(), static_cast<qsizetype>(stride),
                      QImage::Format_RGB32);
         painter.drawImage(rect(), image);
         if (surface_.hasLoadedFrame())
@@ -451,7 +463,7 @@ void Preview::installSurface(bool software) {
         position_ = seconds;
         emit positionChanged(seconds);
     });
-    surface_->open(path_, position_, playing_);
+    surface_->open(path_, position_, playing_, end_);
     layout_->addWidget(view_);
     layout_->setCurrentWidget(view_);
     if (software) {
@@ -489,15 +501,16 @@ void Preview::handleFailure(const QString &reason) {
 
 QString Preview::renderer() const { return renderer_; }
 
-void Preview::open(const QString &path, double seconds, bool playing) {
+void Preview::open(const QString &path, double seconds, bool playing, std::optional<double> end) {
     path_ = path;
     position_ = seconds;
+    end_ = end;
     playing_ = playing;
     if (!surface_) {
         installSurface(preferSoftware());
     } else {
         layout_->setCurrentWidget(view_);
-        surface_->open(path, seconds, playing);
+        surface_->open(path, seconds, playing, end);
     }
 }
 

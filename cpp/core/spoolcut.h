@@ -107,7 +107,10 @@ void exportProject(const Project &project, const QString &root, const QString &o
 // Retain parent components that can resolve through a symbolic link.
 QString projectDirectory(const QString &projectFile);
 
-// Store paths relative to the project directory when the two locations share a root.
+// Resolve paths without folding symlink-sensitive parent components on Linux.
+QString resolveProjectSource(const QString &root, const QString &path);
+
+// Match the Rust editor: store sources inside the project directory as relative paths.
 QString projectSourcePath(const QString &root, const QString &path);
 
 } // namespace spoolcut

@@ -1,10 +1,9 @@
-# SpoolCut Qt feasibility prototype
+# SpoolCut Qt desktop
 
-This GPLv3 preview editor is an experiment on the `cpp-qt` branch. Use the
-Rust editor for projects, precision cuts and lossless export. The prototype
-opens local MP4/MOV footage for playback and shows full sources on a
-proportional timeline. It reads media metadata with ffprobe and uses libmpv
-for decoding. The prototype never writes an output video or a project.
+The Qt Widgets migration build on `cpp-qt` uses the same lossless C++ core
+as the CLI. It loads existing SpoolCut projects, imports and indexes local
+MP4/MOV sources, and exports compatible edits to Matroska using stream copy.
+The Rust reference remains available at `39cb4ee`.
 
 ## Build
 
@@ -28,6 +27,21 @@ by default. Set `SPOOLCUT_QT_PREVIEW=software` to force CPU rendering. Windows
 starts with software rendering. Set `SPOOLCUT_QT_PREVIEW=opengl` to test OpenGL
 explicitly. The status bar and preview tooltip show the selected renderer and
 any fallback reason. Both renderers use CPU video decoding.
+
+## Editing a project
+
+- Use **Import media** or drop MP4/MOV files onto the window. Double-click a
+  bin item to append it or drag it to a position on the timeline.
+- Click the ruler to snap to a safe keyframe. Drag the ruler to scrub.
+  Drag a clip to reorder it or drag an edge to trim. Press **S** to split
+  near the playhead at a safe point. **Space** toggles playback, and the
+  left and right arrows jump to safe keyframes.
+- Use **Open project** and **Save project** with the existing SpoolCut JSON
+  files. Select an unavailable source and choose **Relink source** to locate
+  a replacement. The editor validates existing cuts before changing paths.
+- Use **Export Matroska** to write a new MKV. SpoolCut rejects incompatible
+  streams and existing destinations. Use **Cancel operation** during indexing
+  or export.
 
 ## Windows portable ZIP
 

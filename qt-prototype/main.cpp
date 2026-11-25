@@ -12,7 +12,7 @@
 int main(int argc, char **argv) {
     QApplication app(argc, argv);
     std::setlocale(LC_NUMERIC, "C");
-    app.setApplicationName("SpoolCut Qt prototype");
+    app.setApplicationName("SpoolCut");
     app.setDesktopFileName(QLatin1String(spoolCutDesktopId));
     app.setWindowIcon(QIcon(":/io.github.bugrakoc.SpoolCut.png"));
 
@@ -44,12 +44,16 @@ int main(int argc, char **argv) {
         });
         QTimer::singleShot(15000, &app, [&] { app.exit(2); });
         window.show();
-        QTimer::singleShot(0, &window, [&] { window.importFiles(parser.positionalArguments()); });
+        QTimer::singleShot(0, &window, [&] { window.importFiles(parser.positionalArguments(), true); });
         const int result = app.exec();
-        window.close();
+        window.clear();
         return result;
     }
     window.show();
-    window.importFiles(parser.positionalArguments());
+    const auto files = parser.positionalArguments();
+    if (files.size() == 1 && files.front().endsWith(".json", Qt::CaseInsensitive))
+        window.openProject(files.front());
+    else
+        window.importFiles(files, true);
     return app.exec();
 }

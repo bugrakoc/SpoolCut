@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QWidget>
+#include <optional>
 
 class QStackedLayout;
 class QLabel;
@@ -11,7 +12,7 @@ class Preview final : public QWidget {
 public:
     explicit Preview(QWidget *parent = nullptr);
     ~Preview() override;
-    void open(const QString &path, double seconds, bool playing);
+    void open(const QString &path, double seconds, bool playing, std::optional<double> end = {});
     void seek(double seconds);
     void setPlaying(bool playing);
     void stop();
@@ -40,6 +41,7 @@ private:
     QString renderer_;
     QString fallbackReason_;
     double position_ = 0;
+    std::optional<double> end_;
     bool playing_ = false;
     bool software_ = false;
 };

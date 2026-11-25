@@ -1,6 +1,6 @@
 # SpoolCut — C++ / Qt 6 migration roadmap
 
-Status. The maintainer approved the migration after the Fedora KDE Wayland and Windows 11 prototype retests. Milestone C passed automated parity on Linux and Windows. Milestone D is in progress. See [migration evidence](docs/CPP_QT_STATUS.md) for build instructions, results and open checks.
+Status. The maintainer approved the migration after the Fedora KDE Wayland and Windows 11 prototype retests. Milestone C passed automated parity on Linux and Windows. Milestone D is implemented and in native verification. See [migration evidence](docs/CPP_QT_STATUS.md) for build instructions, results and open checks.
 
 ## 1. Decision and scope
 
@@ -63,12 +63,12 @@ Use explicit ownership, RAII, standard containers and smart pointers where appro
 
 ### D — Desktop feature parity
 
-- [ ] Media bin: multi-file import, drag/drop, resolution, codec and frame rate, relink and missing-file handling.
-- [ ] Gapless timeline: clip widths proportional to durations, scalable ruler, zoom/pan/fit, playhead, safe keyframe markers, clip reordering, edge-drag trim, split at playhead, scrubbing and click-to-nearest-safe-keyframe behavior.
-- [ ] Keep preview seek/playback and effective cuts consistent with export; preserve source switching, playback state, audio and known packet-boundary limitations.
-- [ ] Preserve project new/open/save and existing edit operations, undo/redo, keyboard shortcuts (Ctrl+X/C/V/Z, Ctrl+Shift+Z, Space and keyframe navigation), selection and native menu actions.
+- [x] Media bin: multi-file import, drag/drop, resolution, codec and frame rate, relink and missing-file handling.
+- [x] Gapless timeline: clip widths proportional to durations, scalable ruler, zoom/pan/fit, playhead, safe keyframe markers, clip reordering, edge-drag trim, split at playhead, scrubbing and click-to-nearest-safe-keyframe behavior.
+- [x] Keep preview seek/playback and effective cuts consistent with export; preserve source switching, playback state, audio and known packet-boundary limitations.
+- [x] Preserve project new/open/save and existing edit operations, undo/redo, keyboard shortcuts (Ctrl+X/C/V/Z, Ctrl+Shift+Z, Space and keyframe navigation), selection and native menu actions.
 - [ ] Preserve export progress, cancellation, errors and nonblocking UI. Retain existing icon/assets and desktop integration; verify minimize/maximize/close controls on KDE, taskbar icon on both platforms and high-DPI behavior.
-- [ ] No feature removals or unrelated changes. Add automated edit/model tests and smoke tests covering project reopen, playback, rapid scrubbing and shutdown.
+- [x] No feature removals or unrelated changes. Add automated edit/model tests and smoke tests covering project reopen, playback, rapid scrubbing and shutdown.
 
 ### E — Native CI, packaging and acceptance
 

@@ -8,12 +8,38 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QOpenGLWidget>
+#include <QListWidget>
 #include <QProcess>
 #include <QSignalSpy>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QtTest>
 #include <cstdio>
+
+namespace {
+QString makeMedia(const QTemporaryDir &directory, const QString &name, const QString &color, bool hevc = false)
+{
+    const QString path = directory.filePath(name);
+    QProcess process;
+    const QString ffmpeg = QStandardPaths::findExecutable("ffmpeg");
+    const QString encoder = hevc ? "libx265" : "libx264";
+    QStringList args{"-nostdin", "-v", "error", "-f", "lavfi", "-i",
+                     QString("color=%1:size=320x180:rate=25:duration=4").arg(color),
+                     "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=4",
+                     "-c:v", encoder, "-threads", "2", "-g", "25",
+                     "-pix_fmt", hevc ? "yuv420p10le" : "yuv420p"};
+    if (hevc)
+        args << "-tag:v" << "hvc1" << "-x265-params" << "pools=1:frame-threads=1:log-level=error:open-gop=0";
+    args << "-c:a" << "aac" << QDir::toNativeSeparators(path);
+    process.start(ffmpeg, args);
+    if (!process.waitForFinished(20000) || process.exitStatus() != QProcess::NormalExit
+        || process.exitCode() != 0) {
+        qWarning().noquote() << process.errorString() << process.readAllStandardError();
+        return QString{};
+    }
+    return path;
+}
+}
 
 class PrototypeTest final : public QObject {
     Q_OBJECT
@@ -22,8 +48,7 @@ private slots:
     void proportionalTimeline() {
         Timeline timeline;
         timeline.resize(824, 180);
-        timeline.append({"A", 2});
-        timeline.append({"B", 6});
+        timeline.setClips({{"A", 2, {}}, {"B", 6, {}}});
         QCOMPARE(timeline.xAt(2) - timeline.xAt(0), 100 * 2);
         QCOMPARE(timeline.xAt(8) - timeline.xAt(2), 100 * 6);
         timeline.setPosition(2);
@@ -35,6 +60,123 @@ private slots:
         QTest::mouseClick(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(412, 24));
         QCOMPARE(scrub.size(), 1);
         QCOMPARE(scrub.takeFirst().at(0).toDouble(), 4);
+
+        timeline.setClips({{"A", 2, {0, 1}}, {"B", 6, {0, 2, 4}}});
+        QTest::mouseClick(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(131, 24));
+        QCOMPARE(scrub.takeFirst()[0].toDouble(), 1);
+        QSignalSpy moved(&timeline, &Timeline::moved);
+        QTest::mousePress(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(100, 66));
+        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(810, 66));
+        QCOMPARE(moved.size(), 1);
+        QCOMPARE(moved[0][0].toULongLong(), quint64{0});
+        QCOMPARE(moved[0][1].toULongLong(), quint64{2});
+        QSignalSpy trimmed(&timeline, &Timeline::trimmed);
+        QTest::mousePress(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(210, 66));
+        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(112, 66));
+        QCOMPARE(trimmed.size(), 1);
+        QVERIFY(!trimmed[0][1].toBool());
+        QCOMPARE(trimmed[0][2].toDouble(), 1);
+    }
+
+    void projectEditingAndExport()
+    {
+        using spoolcut::Project;
+        QTemporaryDir directory(QDir::tempPath() + "/SpoolCut ü project-XXXXXX");
+        QVERIFY(directory.isValid());
+        const auto a = makeMedia(directory, "a kırmızı.mp4", "red");
+        const auto b = makeMedia(directory, "b mavi.mp4", "blue");
+        QVERIFY(!a.isEmpty() && !b.isEmpty());
+
+        spoolcut::Cancel cancel{false};
+        spoolcut::Editor editor;
+        editor.import({a, b});
+        editor.setIndex(a, spoolcut::IndexedSource::open(a, cancel));
+        editor.setIndex(b, spoolcut::IndexedSource::open(b, cancel));
+        QCOMPARE(editor.insertSource("source-1", 0), size_t{0});
+        QCOMPARE(editor.insertSource("source-2", 1), size_t{1});
+        editor.trim(0, true, 1.04);
+        editor.split(0, 2.06);
+        QCOMPARE(editor.project().clips.size(), size_t{3});
+        QCOMPARE(editor.project().clips[0].outPts, editor.project().clips[1].inPts);
+        const auto edited = editor.project();
+        QCOMPARE(editor.move(2, 0), size_t{0});
+        QCOMPARE(editor.project().clips.front().source, QString("source-2"));
+        editor.undo();
+        QVERIFY(editor.project() == edited);
+        editor.redo();
+        QVERIFY(editor.copy(0));
+        editor.remove(0);
+        editor.paste(editor.project().clips.size());
+        QCOMPARE(editor.project().clips.back().source, QString("source-2"));
+        const auto path = directory.filePath("kurgu ü.spoolcut.json");
+        editor.save(path);
+        QVERIFY(!editor.dirty());
+        const auto portable = Project::load(path);
+        QCOMPARE(portable.sources.at("source-1"), QFileInfo(a).fileName());
+        const auto plan = spoolcut::plan(portable, directory.path(), cancel);
+
+        Window window;
+        QSignalSpy failures(&window, &Window::problem);
+        QSignalSpy idle(&window, &Window::idle);
+        QSignalSpy exports(&window, &Window::exported);
+        QSignalSpy frames(window.preview(), &Preview::frameDrawn);
+        window.show();
+        QVERIFY(window.openProject(path));
+        QTRY_COMPARE_WITH_TIMEOUT(idle.size(), 1, 15000);
+        QCOMPARE(window.sourceCount(), size_t{2});
+        QCOMPARE(window.clipCount(), size_t{3});
+        QVERIFY(qAbs(window.timeline()->duration() - static_cast<double>(plan.durationUs) / 1e6) < 0.000001);
+        QTRY_VERIFY_WITH_TIMEOUT(!frames.isEmpty(), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(qAbs(window.preview()->position() - 1.0) < 0.06, 5000);
+        const auto output = directory.filePath("kayıt ü.mkv");
+        window.startExport(output);
+        QTRY_COMPARE_WITH_TIMEOUT(exports.size(), 1, 25000);
+        QVERIFY(QFileInfo(output).size() > 0);
+        QCOMPARE(failures.size(), 0);
+
+        window.startExport(output);
+        QTRY_COMPARE_WITH_TIMEOUT(failures.size(), 1, 10000);
+        QVERIFY(failures.takeFirst()[0].toString().contains("output already exists"));
+        QVERIFY(QFileInfo(output).size() > 0);
+
+        // Repeated clips keep the worker active while the event loop delivers cancellation.
+        auto repeated = portable;
+        repeated.clips.assign(35, portable.clips.front());
+        const auto repeatedPath = directory.filePath("cancel.spoolcut.json");
+        repeated.save(repeatedPath);
+        QVERIFY(window.openProject(repeatedPath));
+        QTRY_COMPARE_WITH_TIMEOUT(idle.size(), 4, 15000);
+        const auto cancelledOutput = directory.filePath("cancel.mkv");
+        window.startExport(cancelledOutput);
+        const auto staging = QDir(directory.path());
+        QTRY_VERIFY_WITH_TIMEOUT(!staging.entryList({".spoolcut-*"}, QDir::Dirs | QDir::Hidden).isEmpty(), 10000);
+        window.cancelJob();
+        QTRY_COMPARE_WITH_TIMEOUT(idle.size(), 5, 15000);
+        QVERIFY(!QFileInfo::exists(cancelledOutput));
+        QVERIFY(staging.entryList({".spoolcut-*"}, QDir::Dirs | QDir::Hidden).isEmpty());
+        QCOMPARE(failures.size(), 1);
+        QVERIFY(failures.takeFirst()[0].toString().contains("cancelled"));
+
+        auto missing = portable;
+        missing.sources.at("source-2") = "missing.mov";
+        const auto missingPath = directory.filePath("missing.spoolcut.json");
+        missing.save(missingPath);
+        QVERIFY(window.openProject(missingPath));
+        QTRY_COMPARE_WITH_TIMEOUT(idle.size(), 6, 15000);
+        QCOMPARE(window.clipCount(), size_t{3});
+        QCOMPARE(window.sourceCount(), size_t{2});
+        QCOMPARE(failures.size(), 1);
+        auto *bin = window.findChild<QListWidget *>();
+        QVERIFY(bin);
+        QVERIFY(bin->item(1)->text().contains("Missing file"));
+        window.close();
+
+        spoolcut::Editor relinked;
+        relinked.open(missingPath);
+        relinked.setIndex(a, spoolcut::IndexedSource::open(a, cancel));
+        relinked.relink("source-2", b, spoolcut::IndexedSource::open(b, cancel));
+        QCOMPARE(relinked.segments().size(), size_t{3});
+        QVERIFY(relinked.dirty());
     }
 
 #ifdef Q_OS_LINUX
@@ -80,29 +222,8 @@ private slots:
     void previewLifecycle() {
         QTemporaryDir directory(QDir::tempPath() + "/SpoolCut ü clips-XXXXXX");
         QVERIFY(directory.isValid());
-        const auto make = [&](const QString &name, const QString &color, bool hevc) {
-            const QString path = directory.filePath(name);
-            QProcess process;
-            const QString ffmpeg = QStandardPaths::findExecutable("ffmpeg");
-            const QString encoder = hevc ? "libx265" : "libx264";
-            QStringList args{"-nostdin", "-v", "error", "-f", "lavfi", "-i",
-                             QString("color=%1:size=320x180:rate=25:duration=4").arg(color),
-                             "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=4",
-                             "-c:v", encoder, "-threads", "2", "-g", "25",
-                             "-pix_fmt", hevc ? "yuv420p10le" : "yuv420p"};
-            if (hevc)
-                args << "-tag:v" << "hvc1" << "-x265-params" << "pools=1:frame-threads=1:log-level=error";
-            args << "-c:a" << "aac" << QDir::toNativeSeparators(path);
-            process.start(ffmpeg, args);
-            if (!process.waitForFinished(20000) || process.exitStatus() != QProcess::NormalExit
-                || process.exitCode() != 0) {
-                qWarning().noquote() << process.errorString() << process.readAllStandardError();
-                return QString{};
-            }
-            return path;
-        };
-        const QString avc = make("01 kırmızı H264.mp4", "red", false);
-        const QString hevc = make("02 mavi HEVC.mp4", "blue", true);
+        const QString avc = makeMedia(directory, "01 kırmızı H264.mp4", "red", false);
+        const QString hevc = makeMedia(directory, "02 mavi HEVC.mp4", "blue", true);
         QVERIFY(!avc.isEmpty());
         QVERIFY(!hevc.isEmpty());
 
@@ -117,7 +238,7 @@ private slots:
             QSignalSpy frames(window.preview(), &Preview::frameDrawn);
             QSignalSpy audio(window.preview(), &Preview::audioChanged);
             window.show();
-            window.importFiles({avc, hevc});
+            window.importFiles({avc, hevc}, true);
             QTRY_COMPARE_WITH_TIMEOUT(window.clipCount(), 2, 10000);
             QTRY_VERIFY_WITH_TIMEOUT(!frames.isEmpty() && !audio.isEmpty(), 12000);
             const QString renderer = window.preview()->renderer();
@@ -181,9 +302,10 @@ private slots:
             QCOMPARE(failures.size(), 0);
             window.clear();
             QCOMPARE(window.clipCount(), 0);
-            window.importFiles({hevc});
+            window.importFiles({hevc}, true);
             QTRY_COMPARE_WITH_TIMEOUT(window.clipCount(), 1, 10000);
             QTRY_VERIFY_WITH_TIMEOUT(color().blue() > 180, 10000);
+            window.clear();
             window.close();
         }
     }

@@ -211,9 +211,18 @@ QString projectDirectory(const QString &projectFile)
     return path.left(slash);
 }
 
+QString resolveProjectSource(const QString &root, const QString &path)
+{
+    return QDir::fromNativeSeparators(detail::absolutePath(detail::rootedPath(root, path)));
+}
+
 QString projectSourcePath(const QString &root, const QString &path)
 {
-    return QDir(QFileInfo(root).absoluteFilePath()).relativeFilePath(QFileInfo(path).absoluteFilePath());
+    auto prefix = resolveProjectSource({}, root);
+    if (!prefix.endsWith(QLatin1Char('/')))
+        prefix += QLatin1Char('/');
+    const auto absolute = resolveProjectSource({}, path);
+    return absolute.startsWith(prefix) ? absolute.mid(prefix.size()) : absolute;
 }
 
 double TimeBase::seconds(qint64 ticks) const
