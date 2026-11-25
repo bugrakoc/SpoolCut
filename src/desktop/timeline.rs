@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, ops::Range, rc::Rc};
 
 use gtk::{cairo, prelude::*};
 
@@ -16,6 +16,7 @@ pub struct ClipVisual {
     pub color: usize,
     pub start: i64,
     pub end: i64,
+    pub keyframes: Rc<[i64]>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -88,7 +89,7 @@ impl Timeline {
             .focusable(true)
             .build();
         area.set_tooltip_text(Some(
-            "Scrub the ruler, drag clips to reorder, or drag an edge to trim",
+            "Drag the ruler to scrub. Use ←/→ for keyframes, scroll to pan, or Ctrl+scroll to zoom.",
         ));
         area.add_css_class("timeline");
         let offset = gtk::Adjustment::new(0.0, 0.0, 1.0, 30.0, 200.0, 1.0);
@@ -387,8 +388,9 @@ fn draw(
         draw_clip(
             cr,
             clip,
+            left..x_at(clip.end),
             left,
-            x_at(clip.end),
+            scale,
             view.selected == Some(index),
             view.timed,
         );
@@ -402,8 +404,9 @@ fn draw(
                 draw_clip(
                     cr,
                     &view.clips[clip],
-                    x_at(start),
-                    x_at(end),
+                    x_at(start)..x_at(end),
+                    x_at(view.clips[clip].start),
+                    scale,
                     true,
                     view.timed,
                 );
@@ -415,8 +418,9 @@ fn draw(
                     draw_clip(
                         cr,
                         clip,
+                        x_at(start)..x_at(start.saturating_add(clip.end - clip.start)),
                         x_at(start),
-                        x_at(start.saturating_add(clip.end - clip.start)),
+                        scale,
                         true,
                         view.timed,
                     );
@@ -456,11 +460,13 @@ fn draw(
 fn draw_clip(
     cr: &cairo::Context,
     clip: &ClipVisual,
-    left: f64,
-    right: f64,
+    bounds: Range<f64>,
+    keyframe_origin: f64,
+    scale: f64,
     selected: bool,
     timed: bool,
 ) {
+    let (left, right) = (bounds.start, bounds.end);
     let width = right - left;
     let _ = cr.save();
     cr.rectangle(left, CLIP_TOP, width, CLIP_HEIGHT);
@@ -473,6 +479,30 @@ fn draw_clip(
     ];
     paint(cr, colors[clip.color % colors.len()]);
     let _ = cr.paint();
+    if !clip.keyframes.is_empty()
+        && let Ok((visible_left, _, visible_right, _)) = cr.clip_extents()
+    {
+        let start = visible_left.max(left + 2.0);
+        let end = visible_right.min(right - 2.0);
+        let x_at = |time| keyframe_origin + seconds(time - clip.start) * scale;
+        let first = clip.keyframes.partition_point(|&time| x_at(time) < start);
+        let mut remaining = &clip.keyframes[first..];
+        cr.set_source_rgba(1.0, 1.0, 1.0, 0.20);
+        cr.set_line_width(1.0);
+        while let Some((&time, rest)) = remaining.split_first() {
+            let x = x_at(time);
+            if x >= end {
+                break;
+            }
+            let pixel = x.floor() + 0.5;
+            cr.move_to(pixel, CLIP_TOP + 5.0);
+            cr.line_to(pixel, CLIP_TOP + CLIP_HEIGHT - 5.0);
+            // Keep closely spaced markers legible at low zoom.
+            let skip = rest.partition_point(|&time| x_at(time) < x + 3.0);
+            remaining = &rest[skip..];
+        }
+        let _ = cr.stroke();
+    }
 
     if selected {
         paint(cr, (0.48, 0.76, 1.0));

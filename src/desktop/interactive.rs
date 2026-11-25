@@ -113,46 +113,82 @@ impl App {
             glib::Propagation::Stop
         });
         area.add_controller(scroll);
+        self.connect_shortcuts();
+    }
 
+    fn connect_shortcuts(self: &Rc<Self>) {
         let keys = gtk::EventControllerKey::new();
+        keys.set_name(Some("timeline-shortcuts"));
+        keys.set_propagation_phase(gtk::PropagationPhase::Capture);
         let weak = Rc::downgrade(self);
         keys.connect_key_pressed(move |_, key, _, modifiers| {
             let Some(app) = weak.upgrade() else {
                 return glib::Propagation::Proceed;
             };
-            let can_edit = app.state.borrow().job.is_none() && app.timeline_drag.borrow().is_none();
+            if GtkWindowExt::focus(&app.ui.window).is_some_and(|focus| focus.is::<gtk::Editable>())
+                || modifiers.intersects(
+                    gdk::ModifierType::ALT_MASK
+                        | gdk::ModifierType::SUPER_MASK
+                        | gdk::ModifierType::META_MASK
+                        | gdk::ModifierType::HYPER_MASK,
+                )
+            {
+                return glib::Propagation::Proceed;
+            }
+            let control = modifiers.contains(gdk::ModifierType::CONTROL_MASK);
+            let shift = modifiers.contains(gdk::ModifierType::SHIFT_MASK);
+            let dragging = app.timeline_drag.borrow().is_some();
+            let can_edit = app.state.borrow().job.is_none() && !dragging;
+            if control {
+                if can_edit {
+                    match key.to_lower() {
+                        gdk::Key::x if !shift => app.copy_clip(true),
+                        gdk::Key::c if !shift => app.copy_clip(false),
+                        gdk::Key::v if !shift => app.paste_clip(),
+                        gdk::Key::z => app.edit_history(shift),
+                        gdk::Key::Left | gdk::Key::Right if !shift => {
+                            let selected = app.state.borrow().selected_clip;
+                            if let Some(clip) = selected {
+                                let slot = if key == gdk::Key::Left {
+                                    clip.saturating_sub(1)
+                                } else {
+                                    clip + 2
+                                };
+                                app.reorder_clip(clip, slot);
+                            }
+                        }
+                        _ => return glib::Propagation::Proceed,
+                    }
+                    return glib::Propagation::Stop;
+                }
+                return glib::Propagation::Proceed;
+            }
             match key {
-                gdk::Key::Escape => {
+                gdk::Key::Escape if dragging => {
                     app.cancel_timeline_drag();
                     app.controls();
                 }
-                gdk::Key::space => app.toggle_play(),
-                gdk::Key::s | gdk::Key::S
-                    if can_edit && !modifiers.contains(gdk::ModifierType::CONTROL_MASK) =>
-                {
-                    app.split()
+                gdk::Key::space if !dragging && !shift => app.toggle_play(),
+                gdk::Key::Left | gdk::Key::Right if !dragging && !shift => {
+                    app.seek_keyframe(key == gdk::Key::Right);
                 }
-                gdk::Key::Delete if can_edit => app.remove_clip(),
+                gdk::Key::s | gdk::Key::S if can_edit && !shift => app.split(),
+                gdk::Key::Delete if can_edit && !shift => app.remove_clip(),
                 gdk::Key::plus | gdk::Key::equal => app.ui.timeline.zoom(1.5, None),
                 gdk::Key::minus => app.ui.timeline.zoom(1.0 / 1.5, None),
-                gdk::Key::Left | gdk::Key::Right
-                    if can_edit && modifiers.contains(gdk::ModifierType::CONTROL_MASK) =>
-                {
-                    let selected = app.state.borrow().selected_clip;
-                    if let Some(clip) = selected {
-                        let slot = if key == gdk::Key::Left {
-                            clip.saturating_sub(1)
-                        } else {
-                            clip + 2
-                        };
-                        app.reorder_clip(clip, slot);
-                    }
-                }
                 _ => return glib::Propagation::Proceed,
             }
             glib::Propagation::Stop
         });
-        area.add_controller(keys);
+        self.ui.window.add_controller(keys);
+    }
+
+    fn seek_keyframe(&self, forward: bool) {
+        let position = self.state.borrow().adjacent_keyframe(forward);
+        if let Some(position) = position {
+            self.request_preview(position, false);
+            self.ui.timeline.playhead(position, true);
+        }
     }
 
     pub(super) fn toggle_play(&self) {
@@ -398,6 +434,23 @@ impl App {
 }
 
 impl State {
+    fn adjacent_keyframe(&self, forward: bool) -> Option<i64> {
+        let index = self.at(self.position)?;
+        if forward {
+            self.segments[index..].iter().find_map(|segment| {
+                let points = &segment.keyframes;
+                let next = points.partition_point(|&time| time <= self.position);
+                points.get(next).copied()
+            })
+        } else {
+            self.segments[..=index].iter().rev().find_map(|segment| {
+                let points = &segment.keyframes;
+                let before = points.partition_point(|&time| time < self.position);
+                before.checked_sub(1).map(|i| points[i])
+            })
+        }
+    }
+
     fn nearest_keyframe(&self, position: i64) -> Option<i64> {
         let index = self.at(position)?;
         let segment = &self.segments[index];

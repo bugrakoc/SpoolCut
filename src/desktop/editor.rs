@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
+    rc::Rc,
     sync::atomic::AtomicBool,
 };
 
@@ -44,6 +45,7 @@ pub struct Segment {
     pub end_us: i64,
     pub source_start: f64,
     pub source_end: f64,
+    pub keyframes: Rc<[i64]>,
 }
 
 #[derive(Default)]
@@ -120,15 +122,21 @@ impl Editor {
     pub fn import(&mut self, paths: &[PathBuf]) {
         self.change(|project| {
             for path in paths {
-                if project.sources.values().any(|other| other == path) {
-                    continue;
-                }
-                let id = (1..)
-                    .map(|n| format!("source-{n}"))
-                    .find(|id| !project.sources.contains_key(id))
-                    .unwrap();
-                project.sources.insert(id, path.clone());
+                source_id(project, path);
             }
+        });
+    }
+
+    pub fn paste(&mut self, slot: usize, mut clip: Clip, path: &Path) {
+        self.change(|project| {
+            if !project
+                .sources
+                .get(&clip.source)
+                .is_some_and(|saved| saved == path)
+            {
+                clip.source = source_id(project, path);
+            }
+            project.clips.insert(slot, clip);
         });
     }
 
@@ -161,12 +169,26 @@ impl Editor {
                 cursor = cursor
                     .checked_add(plan.duration_us)
                     .context("Timeline is too long")?;
+                let base = media.info.video_time_base;
+                let source_start = base.seconds(clip.in_pts);
+                let points = &media.info.keyframe_pts;
+                let first = points.partition_point(|&pts| pts < clip.in_pts);
+                let end = points.partition_point(|&pts| pts < clip.out_pts);
+                let keyframes = points[first..end]
+                    .iter()
+                    .map(|&pts| {
+                        let offset = ((base.seconds(pts) - source_start) * 1_000_000.0).round();
+                        start_us.saturating_add(offset as i64)
+                    })
+                    .filter(|&time| time < cursor)
+                    .collect();
                 Ok(Segment {
                     path: path.into(),
                     start_us,
                     end_us: cursor,
-                    source_start: media.info.video_time_base.seconds(clip.in_pts),
-                    source_end: media.info.video_time_base.seconds(clip.out_pts),
+                    source_start,
+                    source_end: base.seconds(clip.out_pts),
+                    keyframes,
                 })
             })
             .collect()
@@ -245,6 +267,18 @@ impl Editor {
         });
         Ok(())
     }
+}
+
+fn source_id(project: &mut Project, path: &Path) -> String {
+    if let Some((id, _)) = project.sources.iter().find(|(_, other)| *other == path) {
+        return id.clone();
+    }
+    let id = (1..)
+        .map(|n| format!("source-{n}"))
+        .find(|id| !project.sources.contains_key(id))
+        .unwrap();
+    project.sources.insert(id.clone(), path.to_owned());
+    id
 }
 
 pub fn source_name(path: &Path) -> String {

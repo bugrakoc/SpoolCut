@@ -14,12 +14,14 @@ cargo run --release --locked --features desktop --bin spoolcut-desktop
 libmpv needs H.264 and HEVC decoding support for preview. The FFmpeg build used for the tests also needs the libx264 and libx265 encoders.
 
 1. Import one or more MP4 or MOV files. Drag a source onto the timeline or select it and click **Add to timeline**.
-2. Click the ruler to jump to the nearest safe keyframe or drag on it to scrub by frame. Use **−**, **+**, or Ctrl+scroll to zoom, and **Fit** to show the whole sequence.
+2. Click the ruler to jump to the nearest safe keyframe or drag on it to scrub by frame. Scroll over the timeline to pan, use **−**, **+**, or Ctrl+scroll to zoom, and click **Fit** to show the whole sequence.
 3. Drag clip bodies to reorder them and drag clip edges to trim. The timeline closes gaps after edits. Trimming and **Split at playhead** snap to safe video cut points.
 4. Save the sequence as a JSON project, and use **Relink** if a source moves.
 5. Choose **Export MKV**. The status area shows progress through validation, copying, joining, and verification.
 
 The preview plays decoded source audio. Export keeps only complete AAC packets, so you may hear a short difference at joins with unaligned audio boundaries.
+
+Use Space to play or pause, and **←** or **→** to seek to the keyframes marked on the clips. Select a timeline clip and use Ctrl+X or Ctrl+C to cut or copy it. Ctrl+V inserts the clip at the boundary nearest the playhead. Use Ctrl+Z to undo and Ctrl+Shift+Z to redo.
 
 ## Command-line export
 

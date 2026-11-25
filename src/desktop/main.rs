@@ -19,7 +19,7 @@ use std::{
 
 use anyhow::{Context, Result};
 use gtk::{gdk, gio, glib, prelude::*};
-use spoolcut::{ExportProgress, Project, export_with_progress};
+use spoolcut::{Clip, ExportProgress, Project, export_with_progress};
 
 use editor::{Editor, IndexedMedia, Segment, source_name, timecode};
 use preview::{Event, Preview};
@@ -31,6 +31,7 @@ struct State {
     editor: Editor,
     selected_source: Option<String>,
     selected_clip: Option<usize>,
+    clipboard: Option<(Clip, PathBuf)>,
     segments: Vec<Segment>,
     timeline_error: Option<String>,
     position: i64,
@@ -183,14 +184,8 @@ impl App {
         self.bind(&self.ui.relink, |app| app.relink());
         self.bind(&self.ui.export, |app| app.pick_export());
         self.bind(&self.ui.cancel, |app| app.cancel_job());
-        self.bind(&self.ui.undo, |app| {
-            app.state.borrow_mut().editor.undo();
-            app.refresh();
-        });
-        self.bind(&self.ui.redo, |app| {
-            app.state.borrow_mut().editor.redo();
-            app.refresh();
-        });
+        self.bind(&self.ui.undo, |app| app.edit_history(false));
+        self.bind(&self.ui.redo, |app| app.edit_history(true));
         self.bind(&self.ui.play, |app| app.toggle_play());
         self.bind(&self.ui.zoom_in, |app| app.ui.timeline.zoom(1.5, None));
         self.bind(&self.ui.zoom_out, |app| {
@@ -702,6 +697,69 @@ impl App {
         self.refresh();
     }
 
+    fn copy_clip(self: &Rc<Self>, cut: bool) {
+        {
+            let mut state = self.state.borrow_mut();
+            let Some(clip) = state
+                .selected_clip
+                .and_then(|index| state.editor.project.clips.get(index))
+            else {
+                return;
+            };
+            let Some(path) = state.editor.project.sources.get(&clip.source) else {
+                return;
+            };
+            state.clipboard = Some((clip.clone(), path.clone()));
+        }
+        if cut {
+            self.remove_clip();
+        }
+        self.ui
+            .message(if cut { "Clip cut." } else { "Clip copied." });
+    }
+
+    fn paste_clip(self: &Rc<Self>) {
+        let slot = {
+            let mut state = self.state.borrow_mut();
+            let Some((clip, path)) = state.clipboard.clone() else {
+                return;
+            };
+            let slot = state.at(state.position).map_or_else(
+                || {
+                    state
+                        .selected_clip
+                        .map_or(state.editor.project.clips.len(), |i| i + 1)
+                },
+                |index| {
+                    let segment = &state.segments[index];
+                    let from_start = state.position - segment.start_us;
+                    let from_end = segment.end_us - state.position;
+                    index + usize::from(from_start >= from_end)
+                },
+            );
+            state.editor.paste(slot, clip, &path);
+            state.selected_clip = Some(slot);
+            slot
+        };
+        self.refresh();
+        self.select_clip(slot);
+        self.ui.message("Clip pasted.");
+    }
+
+    fn edit_history(self: &Rc<Self>, redo: bool) {
+        {
+            let mut state = self.state.borrow_mut();
+            if redo && state.editor.can_redo() {
+                state.editor.redo();
+            } else if !redo && state.editor.can_undo() {
+                state.editor.undo();
+            } else {
+                return;
+            }
+        }
+        self.refresh();
+    }
+
     fn pick_export(self: &Rc<Self>) {
         let dialog = gtk::FileDialog::builder()
             .title("Export timeline")
@@ -826,11 +884,7 @@ impl App {
                 .iter()
                 .map(|(id, path)| {
                     let detail = match editor.media.get(path) {
-                        Some(Ok(media)) => format!(
-                            "{} · {} safe cut points",
-                            media.info.video_codec.to_uppercase(),
-                            media.info.safe_in_pts.len()
-                        ),
+                        Some(Ok(media)) => media_details(&media.info),
                         Some(Err(_)) => "Unavailable · Relink source".into(),
                         None => "Inspecting…".into(),
                     };
@@ -857,9 +911,21 @@ impl App {
                         .sources
                         .get(&clip.source)
                         .map_or_else(|| clip.source.clone(), |path| source_name(path));
-                    let (start, end) = state.segments.get(index).map_or_else(
-                        || (index as i64 * 2_000_000, (index as i64 + 1) * 2_000_000),
-                        |segment| (segment.start_us, segment.end_us),
+                    let (start, end, keyframes) = state.segments.get(index).map_or_else(
+                        || {
+                            (
+                                index as i64 * 2_000_000,
+                                (index as i64 + 1) * 2_000_000,
+                                Rc::default(),
+                            )
+                        },
+                        |segment| {
+                            (
+                                segment.start_us,
+                                segment.end_us,
+                                Rc::clone(&segment.keyframes),
+                            )
+                        },
                     );
                     let color = editor
                         .project
@@ -872,6 +938,7 @@ impl App {
                         color,
                         start,
                         end,
+                        keyframes,
                     }
                 })
                 .collect();
@@ -899,6 +966,7 @@ impl App {
             name.set_ellipsize(gtk::pango::EllipsizeMode::End);
             let detail = gtk::Label::new(Some(&detail));
             detail.set_xalign(0.0);
+            detail.set_ellipsize(gtk::pango::EllipsizeMode::End);
             detail.add_css_class("dim-label");
             text.append(&name);
             text.append(&detail);
@@ -988,9 +1056,12 @@ impl App {
         self.ui
             .placeholder
             .set_tooltip_text(self.preview_error.borrow().as_deref());
-        self.ui
-            .play
-            .set_tooltip_text(self.preview_error.borrow().as_deref());
+        self.ui.play.set_tooltip_text(Some(
+            self.preview_error
+                .borrow()
+                .as_deref()
+                .unwrap_or("Play / pause (Space)"),
+        ));
         self.ui
             .play
             .set_label(if state.playing { "Pause" } else { "Play" });
@@ -1024,6 +1095,24 @@ impl App {
         self.ui.clip_details.set_text(label);
         self.ui.clip_details.set_tooltip_text(Some(label));
     }
+}
+
+fn media_details(info: &spoolcut::MediaInfo) -> String {
+    let resolution = info.video_resolution.map_or_else(
+        || "Unknown resolution".into(),
+        |(width, height)| format!("{width} × {height}"),
+    );
+    let frame_rate = info.average_frame_rate.map_or_else(
+        || "Unknown frame rate".into(),
+        |rate| {
+            let rate = format!(
+                "{:.3}",
+                f64::from(rate.numerator) / f64::from(rate.denominator)
+            );
+            format!("{} fps", rate.trim_end_matches('0').trim_end_matches('.'))
+        },
+    );
+    format!("{resolution} · {frame_rate}")
 }
 
 impl State {
@@ -1175,7 +1264,8 @@ impl App {
         let segment = &state.segments[index];
         let clip = &state.editor.project.clips[index];
         let media = state.editor.source(&clip.source)?.1;
-        let timestamp = segment.source_start + seconds(position - segment.start_us);
+        // A keyframe can round down when mapped to timeline microseconds.
+        let timestamp = segment.source_start + seconds(position - segment.start_us) + 0.000_000_5;
         let frame = media.index.frame_at(clip, timestamp);
         if let Some(active) = state
             .active

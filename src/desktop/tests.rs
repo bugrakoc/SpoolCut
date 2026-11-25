@@ -64,6 +64,18 @@ fn timeline_drag(app: &App, start: f64, y: f64, end: f64) {
     gesture.emit_by_name::<()>("drag-end", &[&(end - start), &0.0f64]);
 }
 
+fn timeline_key(app: &App, key: gdk::Key, modifiers: gdk::ModifierType) {
+    let controllers = app.ui.window.observe_controllers();
+    let keyboard = (0..controllers.n_items())
+        .filter_map(|index| controllers.item(index))
+        .find_map(|controller| {
+            let keyboard = controller.downcast::<gtk::EventControllerKey>().ok()?;
+            (keyboard.name().as_deref() == Some("timeline-shortcuts")).then_some(keyboard)
+        })
+        .expect("window shortcut controller");
+    assert!(keyboard.emit_by_name::<bool>("key-pressed", &[&key, &0u32, &modifiers]));
+}
+
 fn preview_is_ready(app: &App, index: usize) -> bool {
     let state = app.state.borrow();
     state.pending.is_none()
@@ -134,6 +146,29 @@ fn desktop_edit_preview_persist_export() {
     app.ui.append.emit_clicked();
     assert_eq!(app.state.borrow().total(), 2_560_000);
     assert!(app.ui.play.is_sensitive());
+    let first_row = app.ui.media.row_at_index(0).unwrap();
+    let metadata = first_row
+        .child()
+        .unwrap()
+        .last_child()
+        .unwrap()
+        .downcast::<gtk::Label>()
+        .unwrap();
+    assert_eq!(metadata.text(), "160 × 96 · 25 fps");
+
+    // Transport shortcuts still work when a toolbar button has focus.
+    assert!(app.ui.append.grab_focus());
+    app.request_preview(0, false);
+    for (key, expected) in [
+        (gdk::Key::Right, 640_000),
+        (gdk::Key::Right, 1_280_000),
+        (gdk::Key::Left, 640_000),
+        (gdk::Key::Left, 0),
+        (gdk::Key::Left, 0),
+    ] {
+        timeline_key(&app, key, gdk::ModifierType::empty());
+        assert_eq!(app.state.borrow().position, expected);
+    }
 
     let split_x = timeline_x(&app, 690_000);
     timeline_drag(&app, split_x, 12.0, split_x);
@@ -144,6 +179,20 @@ fn desktop_edit_preview_persist_export() {
     let short_width = timeline_x(&app, 640_000) - timeline_x(&app, 0);
     let long_width = timeline_x(&app, 2_560_000) - timeline_x(&app, 1_280_000);
     assert!((long_width - 2.0 * short_width).abs() < 0.01);
+
+    let original = app.state.borrow().editor.project.clips.clone();
+    let control = gdk::ModifierType::CONTROL_MASK;
+    timeline_key(&app, gdk::Key::c, control);
+    app.request_preview(2_560_000, false);
+    timeline_key(&app, gdk::Key::v, control);
+    assert_eq!(app.state.borrow().editor.project.clips[3], original[1]);
+    timeline_key(&app, gdk::Key::x, control);
+    assert_eq!(app.state.borrow().editor.project.clips, original);
+    timeline_key(&app, gdk::Key::z, control);
+    assert_eq!(app.state.borrow().editor.project.clips[3], original[1]);
+    timeline_key(&app, gdk::Key::Z, control | gdk::ModifierType::SHIFT_MASK);
+    assert_eq!(app.state.borrow().editor.project.clips, original);
+
     let before_zoom = app.ui.timeline.scale();
     app.ui.zoom_in.emit_clicked();
     assert!(app.ui.timeline.scale() > before_zoom);
@@ -239,7 +288,11 @@ fn desktop_edit_preview_persist_export() {
     }
 
     app.request_preview(1_920_000, false);
-    app.ui.play.emit_clicked();
+    timeline_key(&app, gdk::Key::space, gdk::ModifierType::empty());
+    assert!(app.state.borrow().playing);
+    timeline_key(&app, gdk::Key::space, gdk::ModifierType::empty());
+    assert!(!app.state.borrow().playing);
+    timeline_key(&app, gdk::Key::space, gdk::ModifierType::empty());
     wait_for("playback to enter the blue clip", || {
         preview_is_ready(&app, 1)
     });

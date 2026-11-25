@@ -58,6 +58,7 @@ impl Widgets {
         let export = gtk::Button::with_label("Export MKV…");
         export.add_css_class("suggested-action");
         let header = gtk::HeaderBar::new();
+        header.set_decoration_layout(Some(":minimize,maximize,close"));
         header.pack_start(&new);
         header.pack_start(&open);
         header.pack_start(&save);
@@ -85,8 +86,6 @@ impl Widgets {
         bin_footer.append(&append);
         bin_footer.append(&relink);
         let bin = gtk::Box::new(gtk::Orientation::Vertical, 10);
-        bin.set_width_request(258);
-        bin.set_hexpand(false);
         bin.append(&bin_header);
         bin.append(&media_scroll);
         bin.append(&bin_footer);
@@ -126,16 +125,26 @@ impl Widgets {
         playback.append(&clock);
         let preview = gtk::Box::new(gtk::Orientation::Vertical, 8);
         preview.set_hexpand(true);
+        preview.set_width_request(300);
         preview.append(&video);
         preview.append(&playback);
-        let workspace = gtk::Box::new(gtk::Orientation::Horizontal, 16);
-        workspace.set_vexpand(true);
-        workspace.append(&bin);
-        workspace.append(&preview);
+        let workspace = gtk::Paned::builder()
+            .orientation(gtk::Orientation::Horizontal)
+            .start_child(&bin)
+            .end_child(&preview)
+            .resize_start_child(false)
+            .shrink_start_child(false)
+            .shrink_end_child(false)
+            .wide_handle(true)
+            .position(258)
+            .vexpand(true)
+            .build();
 
         let timeline = Timeline::new(dark);
         let undo = gtk::Button::with_label("Undo");
+        undo.set_tooltip_text(Some("Undo (Ctrl+Z)"));
         let redo = gtk::Button::with_label("Redo");
+        redo.set_tooltip_text(Some("Redo (Ctrl+Shift+Z)"));
         let zoom_out = gtk::Button::with_label("−");
         zoom_out.set_tooltip_text(Some("Zoom out (Ctrl + scroll)"));
         let zoom_in = gtk::Button::with_label("+");
