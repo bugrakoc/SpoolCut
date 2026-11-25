@@ -43,11 +43,8 @@ target_compile_definitions(spoolcut-qt PRIVATE SPOOLCUT_VERSION="${SPOOLCUT_VERS
 target_link_libraries(spoolcut-qt PRIVATE prototype-widgets)
 if(WIN32)
     enable_language(RC)
-    target_sources(spoolcut-qt PRIVATE spoolcut.rc)
-    target_compile_definitions(spoolcut-qt PRIVATE
-        SPOOLCUT_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
-        SPOOLCUT_VERSION_MINOR=${PROJECT_VERSION_MINOR}
-        SPOOLCUT_VERSION_PATCH=${PROJECT_VERSION_PATCH})
+    configure_file(spoolcut.rc "${CMAKE_CURRENT_BINARY_DIR}/spoolcut.rc" @ONLY)
+    target_sources(spoolcut-qt PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/spoolcut.rc")
     target_include_directories(spoolcut-qt PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 endif()
 
