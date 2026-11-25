@@ -4,6 +4,7 @@ project(SpoolCut VERSION 0.1.0 LANGUAGES CXX)
 
 include(CTest)
 find_package(Qt6 6.8 REQUIRED COMPONENTS Core)
+message(STATUS "Using Qt ${Qt6_VERSION}")
 
 option(SPOOLCUT_SANITIZERS "Build with AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 

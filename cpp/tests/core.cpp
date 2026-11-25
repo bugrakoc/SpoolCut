@@ -4,6 +4,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
+#include <QScopeGuard>
 #include <QTemporaryDir>
 
 #include <chrono>
@@ -64,6 +65,7 @@ void exactProject(const QTemporaryDir &scratch)
     require(read(path).contains("9007199254740993"), u"PTS must remain a JSON integer"_s);
     const std::array malformed{
         R"({"sources":{},"clips":[{"source":"A","in_pts":1.0,"out_pts":2}]})",
+        R"({"sources":{},"clips":[{"source":"A","in_pts":-0,"out_pts":2}]})",
         R"({"sources":{},"clips":[{"source":"A","in_pts":1e0,"out_pts":2}]})",
         R"({"sources":{},"clips":[{"source":"A","in_pts":0,"out_pts":9223372036854775808}]})",
         R"({"sources":{},"clips":[{"source":"A","in_pts":0,"in_pts":1,"out_pts":2}]})",
@@ -175,6 +177,43 @@ void exportBoundaries(const QString &projectPath, const QString &destination)
     rejects([&] { exportProject(project, root, destination, cancel); }, u"already exists"_s);
     require(read(destination) == "existing", u"existing output changed"_s);
     require(QFile::remove(destination) && survivors() == prior, u"failed export left staging files"_s);
+
+    {
+        const auto previous = qgetenv("SPOOLCUT_FFMPEG");
+        const auto restore = qScopeGuard([&] {
+            if (previous.isNull())
+                qunsetenv("SPOOLCUT_FFMPEG");
+            else
+                qputenv("SPOOLCUT_FFMPEG", previous);
+        });
+        rejects([&] {
+            exportProject(project, root, destination, cancel, [&](ExportProgress step) {
+                if (step.stage == ExportStage::Joining)
+                    qputenv("SPOOLCUT_FFMPEG", "spoolcut-missing-ffmpeg");
+            });
+        }, u"joining copied clips"_s);
+        require(survivors() == prior, u"failed join left staging or output files"_s);
+    }
+
+    {
+        const auto path = QDir(root).filePath(project.sources.at(project.clips.front().source));
+        const auto backup = path + u".original"_s;
+        const auto restore = qScopeGuard([&] {
+            if (QFile::exists(backup)) {
+                QFile::remove(path);
+                QFile::rename(backup, path);
+            }
+        });
+        rejects([&] {
+            exportProject(project, root, destination, cancel, [&](ExportProgress step) {
+                if (step.stage == ExportStage::Verifying) {
+                    require(QFile::rename(path, backup) && QFile::copy(backup, path),
+                            u"replace source during verification"_s);
+                }
+            });
+        }, u"source changed or was replaced"_s);
+        require(survivors() == prior, u"source replacement left staging or output files"_s);
+    }
 
     exportProject(project, root, destination, cancel);
     auto expected = prior;

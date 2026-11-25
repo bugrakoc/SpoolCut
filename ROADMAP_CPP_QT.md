@@ -1,6 +1,6 @@
 # SpoolCut — C++ / Qt 6 migration roadmap
 
-Status. Baseline audit and prototype retests complete. Fedora KDE Wayland and Windows 11 passed the follow-up playback and desktop checks. Milestone C awaits the maintainer’s explicit go/no-go. See [migration evidence](docs/CPP_QT_STATUS.md) for the scope of the tests.
+Status. The maintainer approved the migration after the Fedora KDE Wayland and Windows 11 prototype retests. Milestone C is in verification. See [migration evidence](docs/CPP_QT_STATUS.md) for build instructions, results and open checks.
 
 ## 1. Decision and scope
 
@@ -50,7 +50,7 @@ Use explicit ownership, RAII, standard containers and smart pointers where appro
 - [x] Exercise rapid seeking, resizing, source switches, repeated open/close, playback and clean shutdown. The maintainer confirmed Fedora KDE Wayland playback with NVIDIA OpenGL and Windows 11 VM playback with software preview. See the [CI and maintainer results](docs/CPP_QT_STATUS.md).
 - [x] Build relocatable Fedora AppImage and Windows portable ZIP including required Qt platform plugins, libmpv, FFmpeg/ffprobe, runtime dependencies and license notices. Smoke-test on CI without development PATH and on clean target machines where possible.
 - [ ] Compare with the GTK reference on equivalent footage and hardware: startup, idle/playing CPU and memory, scrubbing responsiveness, packaging/install friction, DPI scaling, taskbar icons and decoration behavior. Record comparable measurements and limitations; no unsupported claims.
-- [ ] Present artifacts and evidence for maintainer Fedora and Windows VM/hardware testing. Obtain explicit go/no-go before porting the full lossless engine. If the prototype cannot establish a reliable preview and practical packaging advantage, fix bounded blockers or recommend retaining Rust/GTK. Software-only hosted CI is not proof of accelerated physical playback.
+- [x] Present artifacts and evidence for maintainer Fedora and Windows VM/hardware testing. Obtain explicit go/no-go before porting the full lossless engine. If the prototype cannot establish a reliable preview and practical packaging advantage, fix bounded blockers or recommend retaining Rust/GTK. Software-only hosted CI is not proof of accelerated physical playback.
 
 ### C — Port and verify the core
 

@@ -126,7 +126,7 @@ On Windows extract the inner ZIP and open `SpoolCut Qt Prototype/bin/SpoolCutQt.
 Follow the [manual checklist](../qt-prototype/README.md#manual-checks), including
 actual audio and playback on both systems, the preview renderer tooltip and
 100%, 150% and 200% display scaling. The results above verify the prototype's
-scope. Milestones C through E await maintainer approval.
+scope. The maintainer later approved Milestones C through E after the follow-up retests below.
 
 ### Maintainer test on 25 November 2026
 
@@ -179,4 +179,80 @@ The maintainer tested the follow-up builds from commit
 
 The reported playback and desktop integration blockers are cleared on the
 tested configurations. Accelerated Windows OpenGL and multi-monitor DPI
-remain open. The lossless core port awaits an explicit go/no-go.
+remain open. The maintainer gave the go-ahead for the lossless core port on 25 November 2026.
+
+## C. C++ stream-copy core and CLI
+
+The Qt Core library and CLI were introduced at
+[`b07b330`](https://github.com/bugrakoc/SpoolCut/tree/b07b3306341a5dfed085df5ee1861fb528304c42)
+and compared against the pinned Rust baseline at
+[`39cb4ee`](https://github.com/bugrakoc/SpoolCut/tree/39cb4eecef8914f187871aac2187f8f023d14e0d).
+The Qt prototype remains independently buildable. The new library links Qt
+Core and invokes FFmpeg and ffprobe with QProcess. Each export uses
+packet-ordinal selection, fragmented MP4 staging, Matroska verification and
+an atomic, no-overwrite publication on the destination filesystem.
+
+### Build and reproduce
+
+Use Qt 6.8+, a GCC or Clang toolchain with C++20 and signed 128-bit integer
+support, CMake 3.25+, Ninja, Python 3 and FFmpeg with libx264 and libx265.
+The Windows build uses the MSYS2 UCRT64 packages specified in
+[Qt core CI](../.github/workflows/qt-core.yml). These commands are for
+Debian, Fedora or an MSYS2 UCRT64 shell from the repository root.
+
+```sh
+git worktree add --detach ../spoolcut-reference 39cb4eecef8914f187871aac2187f8f023d14e0d
+cargo test --manifest-path ../spoolcut-reference/Cargo.toml --locked
+cargo build --manifest-path ../spoolcut-reference/Cargo.toml --locked --bin spoolcut
+reference="$(cd ../spoolcut-reference && pwd)/target/debug/spoolcut"
+# On Windows, append .exe and use cygpath -m for the CMake cache value.
+cmake -S . -B build-qt-core -G Ninja -DCMAKE_BUILD_TYPE=Release -DSPOOLCUT_RUST_REFERENCE="$reference"
+cmake --build build-qt-core
+ctest --test-dir build-qt-core -V
+```
+
+Run `build-qt-core/spoolcut --help` for the CLI. On Windows use
+`build-qt-core/spoolcut.exe`. The CLI probes media for `inspect SOURCE`,
+plans the existing project JSON for `plan PROJECT.json` and publishes
+`export PROJECT.json OUTPUT.mkv`. The core CTest suite also runs without
+the Rust CLI. Setting `SPOOLCUT_RUST_REFERENCE` enables the differential
+comparisons.
+
+### Linux evidence
+
+Debian 13 x86-64 with GCC 14.2.0, Qt 6.8.2, FFmpeg/ffprobe 7.1.5, and
+Rust 1.100.0 passed two Rust unit tests, seven Rust integration tests and
+all seven CTest cases. The GCC build treated warnings as errors. Clang
+19.1.7 static analysis reported no diagnostics across the core, CLI and
+test translation units. AddressSanitizer and UndefinedBehaviorSanitizer
+passed the same seven CTest cases locally with leak detection disabled
+because the local executor prevented LeakSanitizer from starting.
+
+Both CLIs returned equal plans and safe-point indexes for accepted fixtures.
+The open-GOP non-IDR in/out cuts, reversed range, out-of-range exact large
+PTS, mismatched video/audio streams and missing sources were rejected with
+the same reason. Both CLI processes exited 130 after SIGINT during staging
+on Linux and removed their staging directories. The C++ API also exercised
+cancellation with an active tool, an existing destination and a file
+created by a competing writer during verification, and a long Unicode
+output path containing spaces and an apostrophe.
+
+Each row is a generated A–B–A export. Both implementations matched the
+source's expected presentation frame order and the selected video/AAC
+SHA-256 packet hashes. The table lists actual MKV duration and audio-minus-
+video start offsets at the three clip boundaries.
+
+| Fixture | Frames | Video / AAC packets | Duration | A/V offsets |
+| --- | ---: | ---: | ---: | --- |
+| AVC with B-frames and aligned cuts | 48 | 48 / 90 | 1.920 s | 0, 0, 0 ms |
+| HEVC with fractional frame rate and two source time bases | 48 | 48 / 73 | 1.601 s | 0, +21, +19 ms |
+| HEVC Main 10 with fractional frame rate and two source time bases | 48 | 48 / 73 | 1.601 s | 0, +21, +19 ms |
+| Variable-frame-rate AVC | 48 | 48 / 93 | 2.040 s | 0, +3, +5 ms |
+
+Both tracks were marked default and FFmpeg decoded the generated HEVC Main
+10 exports. The affected Windows player and original user footage still
+need a manual test. The native Windows results are tracked in
+[Qt core CI run 45592308525](https://github.com/bugrakoc/SpoolCut/actions/runs/45592308525).
+The Windows test suite covers cancellation through the core API. It skips
+the interactive console Ctrl+C test. Physical removable/exFAT destination
+behavior remains a packaging and manual acceptance check.

@@ -8,7 +8,6 @@
 #include <QTemporaryFile>
 
 #include <charconv>
-#include <cmath>
 
 namespace spoolcut {
 namespace {
@@ -118,7 +117,8 @@ private:
         qint64 result = 0;
         const auto *end = data_.constData() + pos_;
         const auto parsed = std::from_chars(data_.constData() + start, end, result);
-        detail::require(parsed.ec == std::errc{} && parsed.ptr == end,
+        const bool negativeZero = result == 0 && start < pos_ && data_[start] == '-';
+        detail::require(parsed.ec == std::errc{} && parsed.ptr == end && !negativeZero,
                         QStringLiteral("expected signed 64-bit integer at byte %1").arg(start));
         return result;
     }

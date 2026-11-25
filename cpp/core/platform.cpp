@@ -7,7 +7,9 @@
 #include <QProcess>
 #include <QTemporaryDir>
 
+#include <algorithm>
 #include <cerrno>
+#include <cstdio>
 #include <cstring>
 
 #ifdef Q_OS_WIN
