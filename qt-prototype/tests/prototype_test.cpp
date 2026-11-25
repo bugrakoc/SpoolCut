@@ -10,6 +10,7 @@
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QtTest>
+#include <cstdio>
 
 class PrototypeTest final : public QObject {
     Q_OBJECT
@@ -78,6 +79,8 @@ private slots:
             QTRY_VERIFY_WITH_TIMEOUT(!frames.isEmpty() && !audio.isEmpty(), 12000);
             const QString renderer = window.preview()->renderer();
             QVERIFY2(!renderer.isEmpty(), "No renderer came up");
+            std::fprintf(stdout, "Preview renderer: %s\n", qPrintable(window.preview()->toolTip()));
+            std::fflush(stdout);
             if (qEnvironmentVariable("SPOOLCUT_QT_PREVIEW") == "software")
                 QCOMPARE(renderer, QString("Software"));
             if (qEnvironmentVariableIsSet("SPOOLCUT_QT_REQUIRE_OPENGL")

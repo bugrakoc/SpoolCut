@@ -53,6 +53,7 @@ if(BUILD_TESTING)
     find_package(Qt6 6.8 REQUIRED COMPONENTS Test)
     qt_add_executable(prototype-tests tests/prototype_test.cpp)
     target_link_libraries(prototype-tests PRIVATE prototype-widgets Qt6::Test)
+    set_target_properties(prototype-tests PROPERTIES WIN32_EXECUTABLE OFF)
     foreach(mode software auto)
         add_test(NAME prototype-${mode} COMMAND prototype-tests)
         set_tests_properties(prototype-${mode} PROPERTIES

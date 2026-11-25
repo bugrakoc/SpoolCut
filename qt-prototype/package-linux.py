@@ -136,7 +136,7 @@ def main():
     fetch(f"https://raw.githubusercontent.com/AppImage/type2-runtime/{RUNTIME_REV}/LICENSE",
           app / "AppImage-runtime-LICENSE")
     app_sources = Path("qt-prototype/runtime-sources.sh").resolve()
-    run("bash", app_sources, notice)
+    run("bash", app_sources, notice, app / "runtime-licenses")
     files = bundle(executable, app)
     collect_sources(files, app, sources)
 
