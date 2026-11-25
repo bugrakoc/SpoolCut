@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
+import time
 import urllib.parse
 import urllib.request
 import zipfile
@@ -125,12 +126,16 @@ def source_url(name):
 def download_source(name, directory):
     for suffix in ("", ".sig"):
         url = source_url(name + suffix)
-        try:
-            with urllib.request.urlopen(url, timeout=90) as response:
-                with (directory / (name + suffix)).open("wb") as output:
-                    shutil.copyfileobj(response, output)
-        except OSError as error:
-            raise RuntimeError(f"Cannot fetch corresponding source: {url}") from error
+        for attempt in range(3):
+            try:
+                with urllib.request.urlopen(url, timeout=60) as response:
+                    with (directory / (name + suffix)).open("wb") as output:
+                        shutil.copyfileobj(response, output)
+                break
+            except OSError as error:
+                if attempt == 2 or getattr(error, "code", None) == 404:
+                    raise RuntimeError(f"Cannot fetch corresponding source: {url}") from error
+                time.sleep(2 ** attempt)
 
 
 def write_archives(prefix, bundle, sources, output, packages):
@@ -196,7 +201,7 @@ def write_archives(prefix, bundle, sources, output, packages):
                 shutil.copy2(license_file, target)
     shutil.copy2("LICENSE", bundle / "LICENSE")
     shutil.copy2("packaging/windows/PORTABLE.txt", bundle / "Read me.txt")
-    run(str(msys / "usr/bin/tar.exe"), "--zstd", "-cf",
+    run(str(msys / "usr/bin/tar.exe"), "--force-local", "--zstd", "-cf",
         (output / "SpoolCut-Windows-sources.tar.zst").as_posix(),
         "-C", sources.parent.as_posix(), sources.name)
     with zipfile.ZipFile(output / "SpoolCut-Windows-x86_64.zip", "w", zipfile.ZIP_DEFLATED) as archive:
