@@ -36,6 +36,13 @@ Use explicit ownership, RAII, standard containers and smart pointers where appro
 
 ## 4. Milestones and decision gates
 
+The [Qt 0.2.2 maintainer results](docs/CPP_QT_STATUS.md#maintainer-acceptance-of-qt-022)
+cover Fedora KDE Wayland with NVIDIA and Windows 11 under QEMU. They include
+the original duration-verification export, Windows HEVC Main 10 export and
+playback, renderer selection, editing and missing-media recovery. The 0.3.0
+candidate requires a final retest of the Fedora missing-media preview and
+relinking fixes and a package smoke test on both platforms.
+
 ### A — Baseline audit and regression inventory
 
 - [x] Inspect current main, this branch, the merged Windows implementation and all source/test/build files; record exact reference SHAs and actual behavior, including known limitations. Check for newer main commits before beginning work; incorporate relevant fixes without rewriting branch history.
@@ -55,7 +62,7 @@ Use explicit ownership, RAII, standard containers and smart pointers where appro
 ### C — Port and verify the core
 
 - [x] Reimplement the existing algorithms, not a simplified approximation; keep project model, probe/index, timestamp math, compatibility validation, planning, export, verification and process/file handling separable.
-- [ ] Preserve accepted inputs (currently compatible MP4/MOV H.264/HEVC video and AAC-LC audio), stream selection, decoder-configuration checks, closed IDR and presentation-order constraints, exclusive out points, full AAC packet selection, existing timestamp tolerances and explicit unsupported-media errors. Confirm details against the integrated Linux/Windows baseline, including the HEVC Main 10 export/player compatibility case and default track dispositions.
+- [x] Preserve accepted inputs (currently compatible MP4/MOV H.264/HEVC video and AAC-LC audio), stream selection, decoder-configuration checks, closed IDR and presentation-order constraints, exclusive out points, full AAC packet selection, existing timestamp tolerances and explicit unsupported-media errors. Differential tests and the maintainer's Qt 0.2.2 Main 10 playback in VLC cover the integrated baseline.
 - [x] Preserve the stream-copy staging/join/verification pipeline, cancellation, safe cleanup, destination no-overwrite and atomic publication. Maintain Unicode/space/long-path and source identity behavior across OSes. Clearly reject unsupported filesystems or unsafe publication cases; do not silently weaken guarantees.
 - [x] Keep project JSON schema, relative paths and integer PTS exact; load reference projects in both implementations and compare plan results. Preserve CLI inspect/plan/export, error handling and exit behavior.
 - [x] Port existing unit/integration tests and generated fixtures. Differentially compare reference and C++ plans, accepted/rejected cut points, video/audio payload hashes where framing permits, decoded frame order, duration, A/V offsets and cancellation behavior. Cover B-frames, fractional/VFR time bases, repeated A-B-A ranges, mismatched streams, destination races and failures. No reliance on output file byte equality when muxer metadata differs.
@@ -67,7 +74,7 @@ Use explicit ownership, RAII, standard containers and smart pointers where appro
 - [x] Gapless timeline: clip widths proportional to durations, scalable ruler, zoom/pan/fit, playhead, safe keyframe markers, clip reordering, edge-drag trim, split at playhead, scrubbing and click-to-nearest-safe-keyframe behavior.
 - [x] Keep preview seek/playback and effective cuts consistent with export; preserve source switching, playback state, audio and known packet-boundary limitations.
 - [x] Preserve project new/open/save and existing edit operations, undo/redo, keyboard shortcuts (Ctrl+X/C/V/Z, Ctrl+Shift+Z, Space and keyframe navigation), selection and native menu actions.
-- [ ] Preserve export progress, cancellation, errors and nonblocking UI. Retain existing icon/assets and desktop integration; verify minimize/maximize/close controls on KDE, taskbar icon on both platforms and high-DPI behavior.
+- [x] Preserve export progress, cancellation, errors and nonblocking UI. The maintainer verified KDE window controls, taskbar icons and Windows scaling and cancellation.
 - [x] No feature removals or unrelated changes. Add automated edit/model tests and smoke tests covering project reopen, playback, rapid scrubbing and shutdown.
 
 ### E — Native CI, packaging and acceptance

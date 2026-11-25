@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QTimer>
 #include <QWidget>
 #include <optional>
 
@@ -15,7 +16,7 @@ public:
     void open(const QString &path, double seconds, bool playing, std::optional<double> end = {});
     void seek(double seconds);
     void setPlaying(bool playing);
-    void stop();
+    void stop(bool missingMedia = false);
     QString renderer() const;
     double position() const { return position_; }
 
@@ -37,6 +38,7 @@ private:
     QLabel *placeholder_;
     QWidget *view_ = nullptr;
     Surface *surface_ = nullptr;
+    QTimer fallbackTimer_;
     QString path_;
     QString renderer_;
     QString fallbackReason_;

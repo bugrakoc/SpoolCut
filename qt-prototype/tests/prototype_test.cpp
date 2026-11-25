@@ -10,14 +10,32 @@
 #include <QLabel>
 #include <QOpenGLWidget>
 #include <QListWidget>
+#include <QPlatformSurfaceEvent>
 #include <QProcess>
 #include <QSignalSpy>
 #include <QStandardPaths>
 #include <QTemporaryDir>
+#include <QWindow>
 #include <QtTest>
 #include <cstdio>
 
 namespace {
+constexpr auto missingMessage = "Relink or remove the missing media from the timeline.";
+constexpr auto emptyMessage = "Open a video to preview it";
+
+class SurfaceEvents final : public QObject {
+public:
+    int changes = 0;
+
+protected:
+    bool eventFilter(QObject *, QEvent *event) override
+    {
+        if (event->type() == QEvent::PlatformSurface)
+            ++changes;
+        return false;
+    }
+};
+
 QString makeMedia(const QTemporaryDir &directory, const QString &name, const QString &color, bool hevc = false)
 {
     const QString path = directory.filePath(name);
@@ -180,6 +198,10 @@ private slots:
         QVERIFY(timeline->clips()[0].unavailable.isEmpty());
         QVERIFY(timeline->clips()[1].unavailable.isEmpty());
         QCOMPARE(timeline->clips()[2].unavailable, QString("Missing media"));
+        auto *placeholder = window.preview()->findChild<QLabel *>();
+        QVERIFY(placeholder && placeholder->isVisible());
+        QCOMPARE(placeholder->text(), QString(missingMessage));
+        QCOMPARE(placeholder->palette().color(QPalette::Window), UnavailableMediaStyle::fill);
         QVERIFY(timeline->clips()[0].color != timeline->clips()[2].color);
 
         const auto missingX = timeline->xAt(timeline->duration() - timeline->clips().back().duration / 2);
@@ -196,6 +218,59 @@ private slots:
         QVERIFY(relinked.clips == portable.clips);
         QCOMPARE(relinked.sources.at("source-2"), QFileInfo(movedPath).fileName());
         window.close();
+    }
+
+    void relinkFirstPreview()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const auto original = makeMedia(directory, "original.mp4", "red");
+        QVERIFY(!original.isEmpty());
+        spoolcut::Cancel cancel{false};
+        spoolcut::Editor editor;
+        editor.import({original});
+        editor.setIndex(original, spoolcut::IndexedSource::open(original, cancel));
+        editor.insertSource("source-1", 0);
+        const auto project = directory.filePath("test.spoolcut.json");
+        editor.save(project);
+        const auto moved = directory.filePath("moved.mp4");
+        QVERIFY(QFile::rename(original, moved));
+
+        Window window;
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        QPointer<QWindow> nativeWindow = window.windowHandle();
+        QVERIFY(nativeWindow);
+        SurfaceEvents surfaceEvents;
+        nativeWindow->installEventFilter(&surfaceEvents);
+        QSignalSpy idle(&window, &Window::idle);
+        QSignalSpy frames(window.preview(), &Preview::frameDrawn);
+        QVERIFY(window.openProject(project));
+        QTRY_COMPARE_WITH_TIMEOUT(idle.size(), 1, 15000);
+        auto *placeholder = window.preview()->findChild<QLabel *>();
+        QVERIFY(placeholder && placeholder->isVisible());
+        QCOMPARE(placeholder->text(), QString(missingMessage));
+        QVERIFY(window.preview()->renderer().isEmpty());
+
+        window.relinkSource("source-1", moved);
+        QTRY_COMPARE_WITH_TIMEOUT(idle.size(), 2, 15000);
+        QTRY_VERIFY_WITH_TIMEOUT(!frames.isEmpty(), 10000);
+        QVERIFY(!placeholder->isVisible());
+        QVERIFY(window.timeline()->hasTiming());
+        QVERIFY(window.isWindowModified());
+        QVERIFY(nativeWindow && window.windowHandle() == nativeWindow);
+        QCOMPARE(surfaceEvents.changes, 0);
+
+        QTest::keyClick(&window, Qt::Key_Z, Qt::ControlModifier);
+        QCOMPARE(placeholder->text(), QString(missingMessage));
+        QVERIFY(!window.isWindowModified());
+        QTest::keyClick(&window, Qt::Key_Z, Qt::ControlModifier | Qt::ShiftModifier);
+        QVERIFY(window.timeline()->hasTiming());
+        QVERIFY(window.isWindowModified());
+        window.clear();
+        QVERIFY(placeholder->isVisible());
+        QCOMPARE(placeholder->text(), QString(emptyMessage));
+        QVERIFY(placeholder->palette().color(QPalette::Window) != UnavailableMediaStyle::fill);
     }
 
     void sourceMovedDuringPlayback()
@@ -236,7 +311,8 @@ private slots:
         QVERIFY(bin->currentItem()->text().contains("Missing file"));
         auto *placeholder = window.preview()->findChild<QLabel *>();
         QVERIFY(placeholder && placeholder->isVisible());
-        QCOMPARE(placeholder->text(), QString("Open a video to preview it"));
+        QCOMPARE(placeholder->text(), QString(missingMessage));
+        QCOMPARE(placeholder->palette().color(QPalette::Window), UnavailableMediaStyle::fill);
         QVERIFY(!window.isWindowModified());
         QVERIFY(window.saveProject(projectPath));
         QVERIFY(spoolcut::Project::load(projectPath) == before);
@@ -253,6 +329,9 @@ private slots:
 #ifdef Q_OS_LINUX
         // An open file can survive a rename on Linux. A preview error is
         // the trigger for rechecking its path, including on the same clip.
+        frames.clear();
+        window.scrub(0);
+        QTRY_VERIFY_WITH_TIMEOUT(!frames.isEmpty(), 10000);
         const auto movedFirst = directory.filePath("moved first.mp4");
         QVERIFY(QFile::rename(a, movedFirst));
         window.togglePlayback();
@@ -262,6 +341,7 @@ private slots:
         QCOMPARE(timeline->clips()[0].unavailable, QString("Missing media"));
         QVERIFY(timeline->clips()[1].unavailable.isEmpty());
         QVERIFY(placeholder->isVisible());
+        QCOMPARE(placeholder->text(), QString(missingMessage));
 #endif
         window.close();
     }

@@ -1,5 +1,38 @@
 # C++ and Qt migration status
 
+## Maintainer acceptance of Qt 0.2.2
+
+The maintainer tested Qt 0.2.2 on Fedora KDE Wayland with NVIDIA OpenGL and
+Windows 11 under QEMU. The reviewed branch head was
+[`f6f1a5a`](https://github.com/bugrakoc/SpoolCut/commit/f6f1a5a4e1fa332c34630eb934a1cea078982de8).
+
+| Check | Fedora KDE Wayland | Windows 11 / QEMU |
+| --- | --- | --- |
+| Export and playback | The original project with the 46.795 versus 46.785 second verification discrepancy exported and played correctly. | The original HEVC Main 10 export played in VLC. |
+| Preview | OpenGL played across joins without observed regressions. Forced software rendered correctly without fading to white. | Software was the default and played HEVC Main 10. Playback across joins worked. |
+| Missing media | Reopening a project after a rename and reaching a renamed source during playback both entered missing-media mode. Bin and timeline styling matched. The preview still showed the ordinary empty message, and relinking caused an apparent restart. | Playback detected the missing file and relinking recovered in place. |
+| Editing and persistence | Trim, split, reorder, scrub and undo/redo worked. | Project save/reopen, editing and playback worked. |
+| Cancellation and destinations | | Export cancellation cleaned staging files. Existing output survived. Export to the VirtIO shared folder on Z: worked. |
+| Earlier desktop checks | Native KDE picker, icon and window controls worked. | Native desktop integration and display scaling at 100%, 150% and 200% worked. |
+
+The VirtIO result covers that shared folder. exFAT, physical Windows OpenGL,
+mixed-DPI monitor movement and further hardware benchmarking are deferred.
+
+### Relinking and native window lifetime
+
+Relinking updates the editor in place. Qt 6.4 and newer can recreate a shown
+top-level native window when the first `QOpenGLWidget` is added. In 0.2.2, a
+project opened with a missing clip could have no preview renderer until relinking
+made its first frame available. This was the native window recreation path.
+See [Qt's QOpenGLWidget documentation](https://doc.qt.io/qt-6/qopenglwidget.html).
+
+The GL widget now belongs to the initial window hierarchy when OpenGL is
+selected. libmpv initialization remains deferred until the first video.
+Missing media shows a placeholder using the timeline's fill, and the existing
+preview is reused once timing is restored. Windows continues to default to
+software. The final Fedora KDE retest should confirm the observed relinking
+symptom is gone with the maintainer's original project and NVIDIA configuration.
+
 ## A. Rust reference
 
 The migration branch started at `be176aa096275d502020b9cfc9d25f2afa14a5bb`.

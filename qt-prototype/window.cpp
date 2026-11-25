@@ -689,7 +689,6 @@ void Window::refresh()
 
     setPlaying(false);
     current_.reset();
-    preview_->stop();
     segments_.clear();
     try {
         segments_ = editor_.segments();
@@ -701,6 +700,7 @@ void Window::refresh()
     double knownDuration = 0;
     size_t knownCount = 0;
     bool checkingSources = false;
+    bool missingMedia = false;
     const auto &project = editor_.project();
     for (size_t i = 0; i < project.clips.size(); ++i) {
         const auto &clip = project.clips[i];
@@ -724,6 +724,7 @@ void Window::refresh()
                     view.unavailable = tr("Unknown source");
                 } else if (!QFileInfo::exists(source->second)) {
                     view.unavailable = tr("Missing media");
+                    missingMedia = true;
                 } else if (!editor_.indexResult(source->second) && cancel_) {
                     view.unavailable = tr("Checking media…");
                     checkingSources = true;
@@ -750,9 +751,10 @@ void Window::refresh()
     }
     timeline_->setClips(std::move(clips), timingProblem);
     timeline_->setSelected(selected_);
+    preview_->stop(missingMedia);
     if (!segments_.empty())
         seek(positionUs_, false);
-    else
+    else if (clipCount() == 0)
         positionUs_ = 0;
     controls();
 }

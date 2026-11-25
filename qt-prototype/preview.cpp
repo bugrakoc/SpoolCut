@@ -1,4 +1,5 @@
 #include "preview.h"
+#include "timeline.h"
 
 #include <QImage>
 #include <QLabel>
@@ -355,6 +356,25 @@ protected:
     void initializeGL() override {
         contextConnection_ = connect(context(), &QOpenGLContext::aboutToBeDestroyed, this,
                                      &OpenGlWidget::cleanup, Qt::DirectConnection);
+        initializationAttempted_ = false;
+    }
+
+    void paintGL() override {
+        if (surface_.hasMedia() && !initializationAttempted_) {
+            initializationAttempted_ = true;
+            initializeSession();
+        }
+        auto *gl = context()->functions();
+        if (!surface_.ready() || !surface_.hasMedia()) {
+            gl->glClearColor(0, 0, 0, 1);
+            gl->glClear(GL_COLOR_BUFFER_BIT);
+            return;
+        }
+        drawFrame(gl);
+    }
+
+private:
+    void initializeSession() {
         mpv_opengl_init_params resolver{
             [](void *context, const char *name) -> void * {
                 auto *qtContext = static_cast<QOpenGLContext *>(context);
@@ -377,16 +397,9 @@ protected:
         emit surface_.rendererReady(QStringLiteral("OpenGL (%1)").arg(driver));
     }
 
-    void paintGL() override {
-        if (!surface_.ready() || !surface_.hasMedia()) {
-            auto *gl = context()->functions();
-            gl->glClearColor(0, 0, 0, 1);
-            gl->glClear(GL_COLOR_BUFFER_BIT);
-            return;
-        }
+    void drawFrame(QOpenGLFunctions *gl) {
         // Qt binds the widget FBO and sets a viewport in device pixels.
         // Use its actual viewport so fractional DPI uses the same rounding as Qt.
-        auto *gl = context()->functions();
         GLint viewport[4]{};
         gl->glGetIntegerv(GL_VIEWPORT, viewport);
         if (viewport[2] <= 0 || viewport[3] <= 0)
@@ -412,7 +425,6 @@ protected:
             emit surface_.frameDrawn();
     }
 
-private:
     void cleanup() {
         if (!contextConnection_)
             return;
@@ -425,6 +437,7 @@ private:
 
     Surface surface_;
     QMetaObject::Connection contextConnection_;
+    bool initializationAttempted_ = false;
 };
 }
 
@@ -432,8 +445,19 @@ Preview::Preview(QWidget *parent)
     : QWidget(parent), layout_(new QStackedLayout(this)), placeholder_(new QLabel(this)) {
     placeholder_->setAlignment(Qt::AlignCenter);
     placeholder_->setWordWrap(true);
+    placeholder_->setAutoFillBackground(true);
     placeholder_->setText(tr("Open a video to preview it"));
+    layout_->setStackingMode(QStackedLayout::StackAll);
     layout_->addWidget(placeholder_);
+    fallbackTimer_.setSingleShot(true);
+    fallbackTimer_.setInterval(1200);
+    connect(&fallbackTimer_, &QTimer::timeout, this, [this] {
+        fallback(tr("Qt could not create an OpenGL widget context"));
+    });
+    // A first GL widget added after show() can recreate Qt's native window.
+    // Add it underneath the placeholder now and start mpv on the first video.
+    if (!preferSoftware())
+        installSurface(false);
 }
 
 Preview::~Preview() {
@@ -469,20 +493,16 @@ void Preview::installSurface(bool software) {
     });
     surface_->open(path_, position_, playing_, end_);
     layout_->addWidget(view_);
-    if (!path_.isEmpty())
+    if (!path_.isEmpty()) {
         layout_->setCurrentWidget(view_);
-    if (software) {
-        static_cast<SoftwareWidget *>(view_)->initialize();
-    } else {
-        // Some QPA plugins never call initializeGL when they cannot create a context.
-        QTimer::singleShot(1200, view_, [this] {
-            if (renderer_.isEmpty())
-                fallback(tr("Qt could not create an OpenGL widget context"));
-        });
+        placeholder_->hide();
     }
+    if (software)
+        static_cast<SoftwareWidget *>(view_)->initialize();
 }
 
 void Preview::fallback(const QString &reason) {
+    fallbackTimer_.stop();
     if (software_) {
         handleFailure(reason);
         return;
@@ -492,6 +512,7 @@ void Preview::fallback(const QString &reason) {
 }
 
 void Preview::handleRenderer(const QString &renderer) {
+    fallbackTimer_.stop();
     renderer_ = renderer;
     setToolTip(fallbackReason_.isEmpty() ? renderer
                                         : tr("%1 — OpenGL fallback: %2").arg(renderer, fallbackReason_));
@@ -502,6 +523,7 @@ void Preview::handleFailure(const QString &reason) {
     if (path_.isEmpty())
         return;
     placeholder_->setText(reason);
+    placeholder_->show();
     layout_->setCurrentWidget(placeholder_);
     emit failed(reason);
 }
@@ -513,11 +535,16 @@ void Preview::open(const QString &path, double seconds, bool playing, std::optio
     position_ = seconds;
     end_ = end;
     playing_ = playing;
+    placeholder_->hide();
     if (!surface_) {
-        installSurface(preferSoftware());
+        installSurface(true);
     } else {
-        layout_->setCurrentWidget(view_);
         surface_->open(path, seconds, playing, end);
+        layout_->setCurrentWidget(view_);
+        view_->update();
+        // Some QPA plugins never call paintGL if they cannot create a context.
+        if (!software_ && renderer_.isEmpty() && !fallbackTimer_.isActive())
+            fallbackTimer_.start();
     }
 }
 
@@ -534,13 +561,22 @@ void Preview::setPlaying(bool playing) {
         surface_->setPlaying(playing);
 }
 
-void Preview::stop() {
+void Preview::stop(bool missingMedia) {
+    fallbackTimer_.stop();
     playing_ = false;
     path_.clear();
     position_ = 0;
     if (surface_)
         surface_->stop();
-    placeholder_->setText(tr("Open a video to preview it"));
+    QPalette palette;
+    if (missingMedia) {
+        palette.setColor(QPalette::Window, UnavailableMediaStyle::fill);
+        palette.setColor(QPalette::WindowText, UnavailableMediaStyle::detail);
+    }
+    placeholder_->setPalette(palette);
+    placeholder_->setText(missingMedia ? tr("Relink or remove the missing media from the timeline.")
+                                       : tr("Open a video to preview it"));
+    placeholder_->show();
     layout_->setCurrentWidget(placeholder_);
 }
 
