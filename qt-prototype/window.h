@@ -57,6 +57,7 @@ private:
     void controls();
     void updateClock();
     void report(const QString &message);
+    bool handleMissingSource(size_t row);
     void edit(const std::function<void()> &operation);
     QString selectedSource() const;
     void insert(const QString &id, size_t slot);

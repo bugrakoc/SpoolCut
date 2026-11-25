@@ -469,7 +469,8 @@ void Preview::installSurface(bool software) {
     });
     surface_->open(path_, position_, playing_, end_);
     layout_->addWidget(view_);
-    layout_->setCurrentWidget(view_);
+    if (!path_.isEmpty())
+        layout_->setCurrentWidget(view_);
     if (software) {
         static_cast<SoftwareWidget *>(view_)->initialize();
     } else {
@@ -498,6 +499,8 @@ void Preview::handleRenderer(const QString &renderer) {
 }
 
 void Preview::handleFailure(const QString &reason) {
+    if (path_.isEmpty())
+        return;
     placeholder_->setText(reason);
     layout_->setCurrentWidget(placeholder_);
     emit failed(reason);

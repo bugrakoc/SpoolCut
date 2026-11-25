@@ -335,6 +335,8 @@ Window::Window()
         qInfo().noquote() << renderer;
     });
     connect(preview_, &Preview::failed, this, [this](const QString &message) {
+        if (current_ && handleMissingSource(*current_))
+            return;
         current_.reset();
         setPlaying(false);
         report(message);
@@ -363,6 +365,19 @@ void Window::report(const QString &message)
 {
     statusBar()->showMessage(message);
     emit problem(message);
+}
+
+bool Window::handleMissingSource(size_t row)
+{
+    const auto path = segments_[row].path;
+    if (QFileInfo::exists(path))
+        return false;
+    const auto message = tr("%1 is missing. Use Relink to locate it.").arg(QFileInfo(path).fileName());
+    editor_.setIndex(path, message);
+    refresh();
+    select(row);
+    report(message);
+    return true;
 }
 
 bool Window::confirmDiscard()
@@ -949,6 +964,8 @@ void Window::seek(qint64 time, bool playing)
         }
         setPlaying(playing);
     } catch (const std::exception &error) {
+        if (handleMissingSource(row))
+            return;
         current_.reset();
         preview_->stop();
         setPlaying(false);

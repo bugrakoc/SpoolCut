@@ -7,6 +7,7 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
+#include <QLabel>
 #include <QOpenGLWidget>
 #include <QListWidget>
 #include <QProcess>
@@ -194,6 +195,74 @@ private slots:
         const auto relinked = Project::load(path);
         QVERIFY(relinked.clips == portable.clips);
         QCOMPARE(relinked.sources.at("source-2"), QFileInfo(movedPath).fileName());
+        window.close();
+    }
+
+    void sourceMovedDuringPlayback()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const auto a = makeMedia(directory, "first.mp4", "red");
+        const auto b = makeMedia(directory, "second.mp4", "blue");
+        QVERIFY(!a.isEmpty() && !b.isEmpty());
+
+        Window window;
+        QSignalSpy idle(&window, &Window::idle);
+        QSignalSpy problems(&window, &Window::problem);
+        QSignalSpy frames(window.preview(), &Preview::frameDrawn);
+        window.show();
+        window.importFiles({a, b}, true);
+        QTRY_COMPARE_WITH_TIMEOUT(idle.size(), 1, 15000);
+        QTRY_VERIFY_WITH_TIMEOUT(!frames.isEmpty(), 10000);
+        const auto projectPath = directory.filePath("untitled.spoolcut.json");
+        QVERIFY(window.saveProject(projectPath));
+        const auto before = spoolcut::Project::load(projectPath);
+
+        const auto moved = directory.filePath("moved second.mp4");
+        window.scrub(3.0);
+        window.togglePlayback();
+        QVERIFY(QFile::rename(b, moved));
+        auto *timeline = window.timeline();
+        QVERIFY(timeline->hasTiming());
+        QTRY_VERIFY_WITH_TIMEOUT(!timeline->hasTiming(), 8000);
+        QCOMPARE(timeline->clips().size(), size_t{2});
+        QVERIFY(timeline->clips()[0].unavailable.isEmpty());
+        QCOMPARE(timeline->clips()[1].unavailable, QString("Missing media"));
+        QCOMPARE(problems.size(), 1);
+        QVERIFY(problems.first()[0].toString().contains("second.mp4"));
+        auto *bin = window.findChild<QListWidget *>();
+        QVERIFY(bin);
+        QCOMPARE(bin->currentItem(), bin->item(1));
+        QVERIFY(bin->currentItem()->text().contains("Missing file"));
+        auto *placeholder = window.preview()->findChild<QLabel *>();
+        QVERIFY(placeholder && placeholder->isVisible());
+        QCOMPARE(placeholder->text(), QString("Open a video to preview it"));
+        QVERIFY(!window.isWindowModified());
+        QVERIFY(window.saveProject(projectPath));
+        QVERIFY(spoolcut::Project::load(projectPath) == before);
+
+        frames.clear();
+        window.relinkSource("source-2", moved);
+        QTRY_COMPARE_WITH_TIMEOUT(idle.size(), 2, 15000);
+        QVERIFY(timeline->hasTiming());
+        QVERIFY(timeline->clips()[1].unavailable.isEmpty());
+        QTRY_VERIFY_WITH_TIMEOUT(!frames.isEmpty(), 10000);
+        QVERIFY(!placeholder->isVisible());
+        QVERIFY(window.saveProject(projectPath));
+
+#ifdef Q_OS_LINUX
+        // An open file can survive a rename on Linux. A preview error is
+        // the trigger for rechecking its path, including on the same clip.
+        const auto movedFirst = directory.filePath("moved first.mp4");
+        QVERIFY(QFile::rename(a, movedFirst));
+        window.togglePlayback();
+        QVERIFY(timeline->hasTiming());
+        emit window.preview()->failed("Media load failed");
+        QVERIFY(!timeline->hasTiming());
+        QCOMPARE(timeline->clips()[0].unavailable, QString("Missing media"));
+        QVERIFY(timeline->clips()[1].unavailable.isEmpty());
+        QVERIFY(placeholder->isVisible());
+#endif
         window.close();
     }
 

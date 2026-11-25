@@ -492,3 +492,16 @@ the CLI version from the extracted AppImage.
 | --- | --- | --- |
 | Fedora x86-64 | [SpoolCut 0.2.1 AppImage](https://github.com/bugrakoc/SpoolCut/actions/runs/45651333003/artifacts/15040107093) | [Linux sources](https://github.com/bugrakoc/SpoolCut/actions/runs/45651333003/artifacts/15039689778) |
 | Windows x86-64 | [SpoolCut 0.2.1 ZIP](https://github.com/bugrakoc/SpoolCut/actions/runs/45651333003/artifacts/15040927274) | [Windows sources](https://github.com/bugrakoc/SpoolCut/actions/runs/45651333003/artifacts/15040822412) |
+
+## Qt 0.2.2 missing-source recovery
+
+When a source disappears after indexing, a failed preview load or playback
+error now updates the source's cached availability. The editor enters the
+same missing-media state as on project reopen, keeps the clips visible,
+selects the missing source for Relink and restores the empty preview.
+Successful joins keep their existing path. There is no background scan.
+
+The desktop regression moves the next source while the timeline is playing,
+checks the missing-media display at the join, and relinks it without reopening
+the project. A Linux case also checks error handling when libmpv already has
+an open handle to the renamed file.

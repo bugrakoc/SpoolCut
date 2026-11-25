@@ -81,11 +81,11 @@ matching source archive available alongside the binary if redistributing.
 Make the versioned AppImage executable, then open it on Fedora 44 or newer.
 The AppImage uses the host graphics drivers and installs a per-user launcher
 for the Qt build. On KDE it requests native file dialogs through the XDG
-Desktop Portal. For a 0.2.1 image, the fallback invocation is
+Desktop Portal. For a 0.2.2 image, the fallback invocation is
 
 ```sh
-./SpoolCut-0.2.1-Qt-Fedora-x86_64.AppImage --appimage-extract-and-run
-./SpoolCut-0.2.1-Qt-Fedora-x86_64.AppImage --cli --version
+./SpoolCut-0.2.2-Qt-Fedora-x86_64.AppImage --appimage-extract-and-run
+./SpoolCut-0.2.2-Qt-Fedora-x86_64.AppImage --cli --version
 ```
 
 Keep the matching Linux source archive available if redistributing the AppImage.
