@@ -48,3 +48,36 @@ jobs:
           done
           test -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
           LC_ALL=tr_TR.UTF-8 dbus-run-session -- cargo test --locked --features desktop --bin spoolcut-desktop -- --ignored
+
+  windows:
+    runs-on: windows-2025
+    timeout-minutes: 35
+    defaults:
+      run:
+        shell: msys2 {0}
+    env:
+      CARGO_PROFILE_DEV_DEBUG: 0
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-rust
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-ffmpeg
+      - name: Verify the native toolchain
+        run: |
+          set -euo pipefail
+          test "$MSYSTEM" = UCRT64
+          test "$(command -v rustc)" = /ucrt64/bin/rustc
+          rustc -vV
+          gcc -v
+          ffmpeg -version
+          ffprobe -version
+      - name: Test stream-copy export
+        run: cargo test --locked
