@@ -185,10 +185,11 @@ void Timeline::paintEvent(QPaintEvent *)
         const auto span = QRectF(x + 0.5, trackY + 0.5, std::max(1.0, end - x - 2), bodyHeight - 1);
         const bool active = selected_ == row;
         const bool available = clip.unavailable.isEmpty();
-        const auto color = available ? (clip.color.isValid() ? clip.color : sourceColor(row)) : QColor(0x63434a);
+        const auto color = available ? (clip.color.isValid() ? clip.color : sourceColor(row))
+                                     : UnavailableMediaStyle::fill;
         p.setBrush(color);
         p.setPen(available ? QPen(active ? QColor(0xb4d9ff) : color.lighter(135), active ? 2 : 1)
-                           : QPen(QColor(0xf6b9aa), active ? 2 : 1, Qt::DashLine));
+                           : QPen(UnavailableMediaStyle::border, active ? 2 : 1, Qt::DashLine));
         p.drawRoundedRect(span, 5, 5);
         p.save();
         p.setClipRect(span.adjusted(2, 1, -2, -1), Qt::IntersectClip);
@@ -203,7 +204,7 @@ void Timeline::paintEvent(QPaintEvent *)
                                               std::max(0, static_cast<int>(label.width()))));
         if (!available) {
             p.setFont(font());
-            p.setPen(QColor(0xffddd4));
+            p.setPen(UnavailableMediaStyle::detail);
             const auto note = visible.adjusted(10, 23, -8, -3);
             p.drawText(note, Qt::AlignVCenter,
                        p.fontMetrics().elidedText(clip.unavailable, Qt::ElideRight,

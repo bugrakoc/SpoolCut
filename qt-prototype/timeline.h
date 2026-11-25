@@ -17,6 +17,12 @@ struct PreviewClip {
 
 QColor sourceColor(size_t row);
 
+namespace UnavailableMediaStyle {
+inline const QColor fill(0x63434a);
+inline const QColor border(0xf6b9aa);
+inline const QColor detail(0xffddd4);
+}
+
 class Timeline final : public QWidget {
     Q_OBJECT
 public:

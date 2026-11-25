@@ -500,6 +500,7 @@ error now updates the source's cached availability. The editor enters the
 same missing-media state as on project reopen, keeps the clips visible,
 selects the missing source for Relink and restores the empty preview.
 Successful joins keep their existing path. There is no background scan.
+Missing rows in the media bin use the timeline's red fill and dashed border.
 
 The desktop regression moves the next source while the timeline is playing,
 checks the missing-media display at the join, and relinks it without reopening

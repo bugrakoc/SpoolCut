@@ -71,24 +71,29 @@ public:
         initStyleOption(&style, index);
         const auto &palette = style.palette;
         const bool selected = style.state.testFlag(QStyle::State_Selected);
-        const bool warning = index.data(mediaErrorRole).toBool();
+        const bool unavailable = index.data(mediaErrorRole).toBool();
         const bool dark = palette.base().color().lightness() < 128;
         const auto area = QRectF(style.rect.adjusted(1, 1, -1, -1));
-        const auto color = index.data(mediaColorRole).value<QColor>();
-        const auto accent = warning ? (dark ? QColor(0xff9d89u) : QColor(0xb64431u))
-                                    : dark ? color.lighter(165) : color;
 
         painter->save();
         painter->setRenderHint(QPainter::Antialiasing);
         painter->setClipRect(style.rect);
-        auto fill = selected ? palette.highlight().color() : palette.alternateBase().color();
-        if (!selected && style.state.testFlag(QStyle::State_MouseOver))
-            fill = dark ? fill.lighter(116) : fill.darker(104);
-        painter->setPen(Qt::NoPen);
-        painter->setBrush(fill);
-        painter->drawRoundedRect(area, 6, 6);
-        painter->setBrush(selected ? palette.highlightedText() : QBrush(accent));
-        painter->drawRoundedRect(QRectF(area.left() + 5, area.top() + 8, 3, area.height() - 16), 1.5, 1.5);
+        if (unavailable) {
+            painter->setPen(QPen(UnavailableMediaStyle::border, selected ? 2 : 1, Qt::DashLine));
+            painter->setBrush(UnavailableMediaStyle::fill);
+            painter->drawRoundedRect(area, 6, 6);
+        } else {
+            auto fill = selected ? palette.highlight().color() : palette.alternateBase().color();
+            if (!selected && style.state.testFlag(QStyle::State_MouseOver))
+                fill = dark ? fill.lighter(116) : fill.darker(104);
+            const auto color = index.data(mediaColorRole).value<QColor>();
+            const auto accent = dark ? color.lighter(165) : color;
+            painter->setPen(Qt::NoPen);
+            painter->setBrush(fill);
+            painter->drawRoundedRect(area, 6, 6);
+            painter->setBrush(selected ? palette.highlightedText() : QBrush(accent));
+            painter->drawRoundedRect(QRectF(area.left() + 5, area.top() + 8, 3, area.height() - 16), 1.5, 1.5);
+        }
 
         const auto row = area.adjusted(16, 0, -9, 0);
         const int width = std::max(0, static_cast<int>(row.width()));
@@ -99,12 +104,14 @@ public:
         auto title = style.font;
         title.setWeight(QFont::DemiBold);
         painter->setFont(title);
-        painter->setPen(selected ? palette.highlightedText().color() : palette.text().color());
+        painter->setPen(unavailable ? QColor(Qt::white)
+                                    : selected ? palette.highlightedText().color() : palette.text().color());
         painter->drawText(QRectF(row.left(), row.center().y() - lineHeight - 1, row.width(), lineHeight),
                           Qt::AlignVCenter, painter->fontMetrics().elidedText(name, Qt::ElideRight, width));
         painter->setFont(style.font);
-        painter->setPen(selected ? palette.highlightedText().color()
-                                 : warning ? accent : palette.color(QPalette::PlaceholderText));
+        painter->setPen(unavailable ? UnavailableMediaStyle::detail
+                                    : selected ? palette.highlightedText().color()
+                                               : palette.color(QPalette::PlaceholderText));
         painter->drawText(QRectF(row.left(), row.center().y() + 1, row.width(), lineHeight),
                           Qt::AlignVCenter, painter->fontMetrics().elidedText(metadata, Qt::ElideRight, width));
         painter->restore();
