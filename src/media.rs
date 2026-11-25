@@ -67,7 +67,7 @@ struct Disposition {
 }
 
 impl Stream {
-    fn parameter(&self, name: &str) -> Result<&str> {
+    pub(crate) fn parameter(&self, name: &str) -> Result<&str> {
         self.parameters
             .get(name)
             .and_then(Value::as_str)
@@ -340,7 +340,7 @@ fn index_cuts(
     Ok((cuts, end))
 }
 
-fn decode_extradata(hex_dump: &str) -> Result<Vec<u8>> {
+pub(crate) fn decode_extradata(hex_dump: &str) -> Result<Vec<u8>> {
     let mut data = Vec::new();
     for line in hex_dump.lines().filter(|line| !line.is_empty()) {
         let (_, columns) = line.split_once(": ").context("invalid ffprobe hex dump")?;

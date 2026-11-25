@@ -24,7 +24,10 @@ project JSON, packet verification and lossless export rules are shared.
   switches, repeated startup/shutdown and decoded pixels in the desktop smoke test.
 - [ ] Validate WGL rendering on a Windows system with accelerated OpenGL.
 - [ ] Verify Windows decorations, taskbar and Explorer icon and scaling at
-  100%, 150% and 200%, including a window moved between monitors.
+  100%, 150% and 200%, including a window moved between monitors. Fractional
+  editor scaling awaits a stable MSYS2 GTK package with Win32 support for it.
+- [ ] Verify Explorer drops, the project toolbar and the highlighted
+  missing-source label in the next portable build.
 
 ## 3. Portable distribution
 
@@ -43,8 +46,9 @@ The [first passing package build](https://github.com/bugrakoc/SpoolCut/actions/r
 
 - [x] Run the native Windows and Linux Wayland smoke tests in CI.
 - [ ] Repeat the editor and export tests on Fedora hardware.
-- [ ] Record the results of the Windows VM checklist, including the renderer
-  used. Release after verifying the package and resolving blocking failures.
+- [x] Record the [Windows VM checklist results](docs/WINDOWS.md#vm-results-for-the-first-portable-build-25-november-2026), including software preview fallback.
+- [ ] Diagnose the failed HEVC/AAC export from the VM and verify playback of a
+  fresh export. Release after verifying the remaining package checks.
 
 ## macOS foundations
 

@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     Clip, MediaInfo, Project, filesystem,
-    media::{Media, Packet, Stream, media_info, probe, read_packets},
+    media::{Media, Packet, Stream, decode_extradata, media_info, probe, read_packets},
     process,
     time::{TimeBase, ffmpeg_time},
 };
@@ -414,13 +414,59 @@ fn write_clip(media: &Media, clip: &PlannedClip, output: &Path, cancel: &AtomicB
 }
 
 #[derive(Deserialize)]
-struct OutputDuration {
+struct OutputInfo {
     format: ContainerDuration,
+    streams: Vec<OutputStream>,
 }
 
 #[derive(Deserialize)]
 struct ContainerDuration {
     duration: String,
+}
+
+#[derive(Deserialize)]
+struct OutputStream {
+    codec_type: String,
+    codec_name: String,
+    extradata: Option<String>,
+}
+
+#[derive(PartialEq, Eq)]
+struct HevcConfiguration<'a> {
+    nal_length_size: u8,
+    nals: Vec<(u8, &'a [u8])>,
+}
+
+fn hevc_configuration(data: &[u8]) -> Result<HevcConfiguration<'_>> {
+    let (header, mut arrays) = data
+        .split_at_checked(23)
+        .context("incomplete HEVC header")?;
+    ensure!(header[0] == 1, "invalid HEVC configuration version");
+    let mut nals = Vec::new();
+    for _ in 0..header[22] {
+        let (array, rest) = arrays
+            .split_first_chunk::<3>()
+            .context("incomplete HEVC array")?;
+        arrays = rest;
+        for _ in 0..u16::from_be_bytes([array[1], array[2]]) {
+            let (length, rest) = arrays
+                .split_first_chunk::<2>()
+                .context("missing HEVC NAL length")?;
+            let (nal, rest) = rest
+                .split_at_checked(usize::from(u16::from_be_bytes(*length)))
+                .context("incomplete HEVC NAL")?;
+            nals.push((array[0] & 0x3f, nal));
+            arrays = rest;
+        }
+    }
+    ensure!(arrays.is_empty(), "unexpected data after HEVC arrays");
+    // Matroska can rewrite hvcC array order and completeness flags. The
+    // decoder still needs the same NAL length size and configuration units.
+    nals.sort_unstable();
+    Ok(HevcConfiguration {
+        nal_length_size: (header[21] & 3) + 1,
+        nals,
+    })
 }
 
 fn verify(
@@ -485,13 +531,44 @@ fn verify(
         video.next().is_none() && audio.next().is_none(),
         "unexpected extra output packets"
     );
-    let OutputDuration { format } = probe(
+    let OutputInfo { format, streams } = probe(
         path,
         "matroska",
-        &["-show_format"],
-        "format=duration",
+        &["-show_format", "-show_streams", "-show_data"],
+        "format=duration:stream=codec_type,codec_name,extradata",
         cancel,
     )?;
+    let reference = &sources[&plan.clips[0].source];
+    ensure!(
+        streams.len() == 2,
+        "expected one video and one audio stream"
+    );
+    for (actual, expected) in streams.iter().zip([&reference.video, &reference.audio]) {
+        ensure!(
+            actual.codec_type == expected.codec_type
+                && actual.codec_name == expected.parameter("codec_name")?,
+            "output {} codec changed",
+            expected.codec_type
+        );
+        let output_config = actual.extradata.as_deref().with_context(|| {
+            format!(
+                "output {} decoder configuration is missing",
+                expected.codec_type
+            )
+        })?;
+        let source_config = expected.parameter("extradata")?;
+        let configuration_matches = if actual.codec_name == "hevc" {
+            hevc_configuration(&decode_extradata(output_config)?)?
+                == hevc_configuration(&decode_extradata(source_config)?)?
+        } else {
+            output_config == source_config
+        };
+        ensure!(
+            configuration_matches,
+            "output {} decoder configuration changed",
+            expected.codec_type
+        );
+    }
     let (whole, fraction) = format
         .duration
         .split_once('.')

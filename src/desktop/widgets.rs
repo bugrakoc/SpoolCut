@@ -10,6 +10,7 @@ pub struct Widgets {
     pub software_canvas: gtk::Picture,
     pub preview_stack: gtk::Stack,
     pub placeholder: gtk::Label,
+    pub media_bin: gtk::Box,
     pub media: gtk::ListBox,
     pub timeline: Timeline,
     pub zoom_out: gtk::Button,
@@ -68,19 +69,18 @@ impl Widgets {
         let save_as = gtk::Button::with_label("Save As…");
         let export = gtk::Button::with_label("Export MKV…");
         export.add_css_class("suggested-action");
-        let header = gtk::HeaderBar::new();
-        header.set_show_title_buttons(false);
         #[cfg(not(windows))]
-        header.set_title_widget(Some(&window_title(&window, &icon_texture)));
-        header.pack_start(&new);
-        header.pack_start(&open);
-        header.pack_start(&save);
-        header.pack_start(&save_as);
-        #[cfg(not(windows))]
-        header.pack_end(&window_controls(&window));
-        header.pack_end(&export);
-        #[cfg(not(windows))]
-        window.set_titlebar(Some(&header));
+        {
+            let header = gtk::HeaderBar::new();
+            header.set_show_title_buttons(false);
+            header.set_title_widget(Some(&window_title(&window, &icon_texture)));
+            for button in [&new, &open, &save, &save_as] {
+                header.pack_start(button);
+            }
+            header.pack_end(&window_controls(&window));
+            header.pack_end(&export);
+            window.set_titlebar(Some(&header));
+        }
 
         let media = gtk::ListBox::new();
         media.add_css_class("boxed-list");
@@ -101,10 +101,10 @@ impl Widgets {
         let bin_footer = gtk::Box::new(gtk::Orientation::Horizontal, 6);
         bin_footer.append(&append);
         bin_footer.append(&relink);
-        let bin = gtk::Box::new(gtk::Orientation::Vertical, 10);
-        bin.append(&bin_header);
-        bin.append(&media_scroll);
-        bin.append(&bin_footer);
+        let media_bin = gtk::Box::new(gtk::Orientation::Vertical, 10);
+        media_bin.append(&bin_header);
+        media_bin.append(&media_scroll);
+        media_bin.append(&bin_footer);
 
         let canvas = gtk::GLArea::builder()
             .auto_render(false)
@@ -150,7 +150,7 @@ impl Widgets {
         preview.append(&playback);
         let workspace = gtk::Paned::builder()
             .orientation(gtk::Orientation::Horizontal)
-            .start_child(&bin)
+            .start_child(&media_bin)
             .end_child(&preview)
             .resize_start_child(false)
             .shrink_start_child(false)
@@ -216,7 +216,17 @@ impl Widgets {
         content.set_margin_start(14);
         content.set_margin_end(14);
         #[cfg(windows)]
-        content.append(&header);
+        {
+            let project_buttons = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+            project_buttons.set_hexpand(true);
+            for button in [&new, &open, &save, &save_as] {
+                project_buttons.append(button);
+            }
+            let toolbar = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+            toolbar.append(&project_buttons);
+            toolbar.append(&export);
+            content.append(&toolbar);
+        }
         content.append(&workspace);
         content.append(&timeline_title);
         content.append(&timeline.area);
@@ -232,6 +242,7 @@ impl Widgets {
             software_canvas,
             preview_stack,
             placeholder,
+            media_bin,
             media,
             timeline,
             zoom_out,
@@ -419,6 +430,7 @@ pub fn files(dialog: &gtk::FileDialog, label: &str, patterns: &[&str]) {
 const CSS: &str = "
 .video-frame { background-color: #10151c; border-radius: 8px; }
 .preview-placeholder { color: #d0d9e4; }
+.media-unavailable { color: @error_color; font-weight: bold; }
 .media-workspace > separator {
     background: transparent;
     border: none;

@@ -142,7 +142,18 @@ fn desktop_edit_preview_persist_export() {
             "OpenGL was required, but the editor fell back to software"
         );
     }
-    app.start_index(vec![a, b.clone()], IndexIntent::Import);
+    let controllers = app.ui.media_bin.observe_controllers();
+    let drop_target = (0..controllers.n_items())
+        .filter_map(|index| controllers.item(index))
+        .find_map(|controller| controller.downcast::<gtk::DropTarget>().ok())
+        .expect("media bin file drop controller");
+    let drop_files = |files: &[gio::File]| {
+        let value = glib::value::BoxedValue(gdk::FileList::from_array(files).to_value());
+        drop_target.emit_by_name::<bool>("drop", &[&value, &0.0f64, &0.0f64])
+    };
+    let files = [gio::File::for_path(a), gio::File::for_path(&b)];
+    assert!(drop_files(&files));
+    assert!(!drop_files(&files), "the first import is still running");
     wait_for("media import", || app.state.borrow().job.is_none());
     assert_eq!(app.state.borrow().editor.project.sources.len(), 2);
 
@@ -336,9 +347,19 @@ fn desktop_edit_preview_persist_export() {
     });
     assert!(app.state.borrow().editor.source("source-1").is_err());
     assert!(!app.ui.export.is_sensitive());
+    let missing_detail = || {
+        app.ui
+            .media
+            .row_at_index(0)
+            .and_then(|row| row.child())
+            .and_then(|row| row.last_child())
+            .unwrap()
+    };
+    assert!(missing_detail().has_css_class("media-unavailable"));
     app.start_index(vec![relocated], IndexIntent::Relink("source-1".into()));
     wait_for("relink", || app.state.borrow().job.is_none());
     assert!(app.ui.export.is_sensitive(), "{}", app.ui.status.text());
+    assert!(!missing_detail().has_css_class("media-unavailable"));
 
     let relinked = scratch.path().join("relinked.json");
     app.save_to(relinked.clone());
