@@ -1,7 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=SpoolCut Qt Prototype
-Exec=spoolcut-qt %F
-Icon=io.github.bugrakoc.SpoolCut.QtPrototype
-Categories=AudioVideo;Video;
-Terminal=false

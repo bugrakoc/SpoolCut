@@ -14,4 +14,4 @@ case ":${XDG_CURRENT_DESKTOP:-}:" in
         esac
         ;;
 esac
-exec "$base/bin/spoolcut-qt" "$@"
+exec "$base/bin/spoolcut-desktop" "$@"

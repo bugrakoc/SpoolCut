@@ -10,7 +10,7 @@
 #include <QTemporaryFile>
 
 namespace {
-constexpr auto managed = "X-SpoolCut-Qt-AppImage=true";
+constexpr auto managed = "X-SpoolCut-AppImage=true";
 
 QString desktopEntryPath() {
     return QStringLiteral("applications/") + QLatin1String(spoolCutDesktopId) + ".desktop";
@@ -47,7 +47,7 @@ QString installAppImageLauncher(const QString &image, const QString &dataHome) {
                                       + QLatin1String(spoolCutDesktopId) + ".png");
 
     if (!home.mkpath("applications"))
-        return QStringLiteral("Could not create the Qt prototype's applications directory");
+        return QStringLiteral("Could not create the applications directory");
     QLockFile lock(path + ".lock");
     if (!lock.tryLock(0))
         return {};
@@ -65,9 +65,9 @@ QString installAppImageLauncher(const QString &image, const QString &dataHome) {
     QFile iconResource(":/io.github.bugrakoc.SpoolCut.png");
     if (!home.mkpath("icons/hicolor/256x256/apps")
         || !iconResource.open(QIODevice::ReadOnly) || !save(icon, iconResource.readAll()))
-        return QStringLiteral("Could not install the Qt prototype's application icon");
+        return QStringLiteral("Could not install the SpoolCut application icon");
 
-    const QByteArray entry = QStringLiteral("[Desktop Entry]\nType=Application\nName=SpoolCut Qt Prototype\n"
+    const QByteArray entry = QStringLiteral("[Desktop Entry]\nType=Application\nName=SpoolCut\n"
         "Exec=%1\nTryExec=%2\nIcon=%3\nCategories=AudioVideo;Video;\nTerminal=false\n%4\n")
         .arg(execLine(image), entryValue(image), entryValue(icon), QLatin1String(managed)).toUtf8();
     if (replacing && save(path, entry))
@@ -80,7 +80,7 @@ QString installAppImageLauncher(const QString &image, const QString &dataHome) {
             return {};
         }
     }
-    return QStringLiteral("Could not install the Qt prototype's desktop launcher");
+    return QStringLiteral("Could not install the SpoolCut desktop launcher");
 }
 
 QString registerAppImageLauncher() {
@@ -89,7 +89,7 @@ QString registerAppImageLauncher() {
     if (bundle.isEmpty() || !image.isAbsolute() || !image.isFile())
         return {};
     const QString executable = QDir(bundle).relativeFilePath(QCoreApplication::applicationFilePath());
-    if (executable != QStringLiteral("bin/spoolcut-qt"))
+    if (executable != QStringLiteral("bin/spoolcut-desktop"))
         return {};
     const QString data = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation);
     if (data.isEmpty())

@@ -1,9 +1,10 @@
-name: Qt core parity
+name: Core and export
 
 on:
   push:
-    branches: [cpp-qt]
-    paths: ["VERSION", "cmake/**", "CMakeLists.txt", "cpp/**", ".github/workflows/qt-core.yml"]
+    branches: [main, cpp-qt]
+  pull_request:
+    branches: [main, cpp-qt]
   workflow_dispatch:
 
 permissions:
@@ -21,6 +22,7 @@ jobs:
           apt-get install -y --no-install-recommends git g++ clang clang-tools cmake ninja-build qt6-base-dev ffmpeg python3
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
       - name: Build and test the pinned Rust reference
@@ -34,7 +36,7 @@ jobs:
           g++ --version
           ffmpeg -version
           ffprobe -version
-          cmake -S . -B build-qt-core -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_COMPILE_WARNING_AS_ERROR=ON \
+          cmake -S . -B build-qt-core -G Ninja -DSPOOLCUT_BUILD_DESKTOP=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_COMPILE_WARNING_AS_ERROR=ON \
             -DSPOOLCUT_RUST_REFERENCE=/tmp/spoolcut-reference/target/debug/spoolcut
           cmake --build build-qt-core
           ctest --test-dir build-qt-core --output-on-failure -V
@@ -42,13 +44,13 @@ jobs:
         env:
           UBSAN_OPTIONS: halt_on_error=1
         run: |
-          cmake -S . -B build-qt-sanitized -G Ninja -DCMAKE_BUILD_TYPE=Debug -DSPOOLCUT_SANITIZERS=ON \
+          cmake -S . -B build-qt-sanitized -G Ninja -DSPOOLCUT_BUILD_DESKTOP=OFF -DCMAKE_BUILD_TYPE=Debug -DSPOOLCUT_SANITIZERS=ON \
             -DSPOOLCUT_RUST_REFERENCE=/tmp/spoolcut-reference/target/debug/spoolcut
           cmake --build build-qt-sanitized
           ctest --test-dir build-qt-sanitized --output-on-failure
       - name: Run Clang static analysis
         run: |
-          scan-build --status-bugs cmake -S . -B build-qt-analysis -G Ninja -DCMAKE_BUILD_TYPE=Debug
+          scan-build --status-bugs cmake -S . -B build-qt-analysis -G Ninja -DSPOOLCUT_BUILD_DESKTOP=OFF -DCMAKE_BUILD_TYPE=Debug
           scan-build --status-bugs cmake --build build-qt-analysis
 
   windows:
@@ -60,6 +62,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
       - uses: msys2/setup-msys2@v2
@@ -90,7 +93,7 @@ jobs:
           git worktree add --detach ../spoolcut-reference 39cb4eecef8914f187871aac2187f8f023d14e0d
           cargo test --manifest-path ../spoolcut-reference/Cargo.toml --locked
           cargo build --manifest-path ../spoolcut-reference/Cargo.toml --locked --bin spoolcut
-          cmake -S . -B build-qt-core -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_COMPILE_WARNING_AS_ERROR=ON \
+          cmake -S . -B build-qt-core -G Ninja -DSPOOLCUT_BUILD_DESKTOP=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_COMPILE_WARNING_AS_ERROR=ON \
             -DSPOOLCUT_RUST_REFERENCE="$(cygpath -m "$PWD/../spoolcut-reference/target/debug/spoolcut.exe")"
           cmake --build build-qt-core
           ctest --test-dir build-qt-core --output-on-failure -V

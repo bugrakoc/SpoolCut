@@ -1,17 +1,17 @@
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
-$root = Join-Path $env:RUNNER_TEMP "SpoolCut Qt portable ü $([guid]::NewGuid())"
+$root = Join-Path $env:RUNNER_TEMP "SpoolCut portable ü $([guid]::NewGuid())"
 $oldPath = $env:PATH
 $version = (Get-Content -LiteralPath VERSION -Raw).Trim()
 try {
-    Expand-Archive -LiteralPath "dist-qt-windows/SpoolCut-${version}-Qt-Windows-x86_64.zip" -DestinationPath $root
-    $bin = Join-Path $root 'SpoolCut Qt/bin'
+    Expand-Archive -LiteralPath "dist-windows/SpoolCut-${version}-Windows-x86_64.zip" -DestinationPath $root
+    $bin = Join-Path $root 'SpoolCut/bin'
     $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
     $env:SPOOLCUT_QT_TEST_AUDIO_NULL = '1'
     Remove-Item Env:SPOOLCUT_QT_PREVIEW -ErrorAction SilentlyContinue
-    $cli = Join-Path $bin 'spoolcut.exe'
+    $cli = Join-Path $bin 'spoolcut-cli.exe'
     $ffmpeg = Join-Path $bin 'ffmpeg.exe'
-    $desktop = Join-Path $bin 'SpoolCutQt.exe'
+    $desktop = Join-Path $bin 'SpoolCut.exe'
     if ((& $cli --version) -ne "SpoolCut $version") { throw "Wrong bundled CLI version" }
     if ((Get-Item -LiteralPath $desktop).VersionInfo.ProductVersion -ne $version) {
         throw "Wrong desktop executable version"
@@ -34,8 +34,8 @@ try {
         Write-Host "Exported and decoded $output with the relocated CLI and tools"
         $process = Start-Process -FilePath $desktop -ArgumentList @('--smoke', ('"' + $video + '"')) -WorkingDirectory $root -PassThru
         try {
-            if (!$process.WaitForExit(22000)) { throw "SpoolCutQt hung opening $video" }
-            if ($process.ExitCode -ne 0) { throw "SpoolCutQt exited with $($process.ExitCode) opening $video" }
+            if (!$process.WaitForExit(22000)) { throw "SpoolCut hung opening $video" }
+            if ($process.ExitCode -ne 0) { throw "SpoolCut exited with $($process.ExitCode) opening $video" }
             Write-Host "Opened $video with the packaged Windows default renderer"
         } finally {
             if (!$process.HasExited) { $process.Kill() }

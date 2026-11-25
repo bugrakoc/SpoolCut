@@ -6,8 +6,8 @@ workspace=$(mktemp -d)
 trap 'rm -rf "$workspace"' EXIT
 cd "$workspace"
 mkdir 'SpoolCut ü relocated'
-cp "$image" 'SpoolCut ü relocated/SpoolCut Qt.AppImage'
-image="$workspace/SpoolCut ü relocated/SpoolCut Qt.AppImage"
+cp "$image" 'SpoolCut ü relocated/SpoolCut.AppImage'
+image="$workspace/SpoolCut ü relocated/SpoolCut.AppImage"
 "$image" --appimage-extract >/dev/null
 bundle="$workspace/SpoolCut ü payload"
 mv "$workspace/squashfs-root" "$bundle"
@@ -43,7 +43,7 @@ for video in avc hevc; do
         grep -E '^(Software|OpenGL)' "$workspace/preview.log"
     done
 done
-launcher="$XDG_DATA_HOME/applications/io.github.bugrakoc.SpoolCut.QtPrototype.desktop"
+launcher="$XDG_DATA_HOME/applications/io.github.bugrakoc.SpoolCut.desktop"
 desktop-file-validate "$launcher"
 grep -Fx "$(printf 'Exec="%s" %%F' "$image")" "$launcher"
-test -s "$XDG_DATA_HOME/icons/hicolor/256x256/apps/io.github.bugrakoc.SpoolCut.QtPrototype.png"
+test -s "$XDG_DATA_HOME/icons/hicolor/256x256/apps/io.github.bugrakoc.SpoolCut.png"

@@ -3,6 +3,7 @@
 #include "timeline.h"
 #include "window.h"
 
+#include <QAction>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
@@ -60,7 +61,7 @@ QString makeMedia(const QTemporaryDir &directory, const QString &name, const QSt
 }
 }
 
-class PrototypeTest final : public QObject {
+class DesktopTest final : public QObject {
     Q_OBJECT
 
 private slots:
@@ -261,10 +262,20 @@ private slots:
         QVERIFY(nativeWindow && window.windowHandle() == nativeWindow);
         QCOMPARE(surfaceEvents.changes, 0);
 
-        QTest::keyClick(&window, Qt::Key_Z, Qt::ControlModifier);
+        const auto actions = window.findChildren<QAction *>();
+        const auto undo = std::find_if(actions.begin(), actions.end(), [](const auto *action) {
+            return action->text() == "Undo";
+        });
+        const auto redo = std::find_if(actions.begin(), actions.end(), [](const auto *action) {
+            return action->text() == "Redo";
+        });
+        QVERIFY(undo != actions.end() && redo != actions.end());
+        QVERIFY((*undo)->isEnabled());
+        (*undo)->trigger();
         QCOMPARE(placeholder->text(), QString(missingMessage));
         QVERIFY(!window.isWindowModified());
-        QTest::keyClick(&window, Qt::Key_Z, Qt::ControlModifier | Qt::ShiftModifier);
+        QVERIFY((*redo)->isEnabled());
+        (*redo)->trigger();
         QVERIFY(window.timeline()->hasTiming());
         QVERIFY(window.isWindowModified());
         window.clear();
@@ -494,5 +505,5 @@ private slots:
     }
 };
 
-QTEST_MAIN(PrototypeTest)
-#include "prototype_test.moc"
+QTEST_MAIN(DesktopTest)
+#include "desktop_test.moc"

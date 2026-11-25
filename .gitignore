@@ -1,3 +1,2 @@
-/target/
-/build-qt*/
-/dist-qt*/
+/build*/
+/dist*/

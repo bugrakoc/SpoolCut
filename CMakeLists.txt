@@ -4,8 +4,14 @@ include(cmake/SpoolCutVersion.cmake)
 project(SpoolCut VERSION "${SPOOLCUT_VERSION}" LANGUAGES CXX)
 
 include(CTest)
+option(SPOOLCUT_BUILD_DESKTOP "Build the Qt Widgets editor" ON)
 find_package(Qt6 6.8 REQUIRED COMPONENTS Core)
 message(STATUS "Using Qt ${Qt6_VERSION}")
+
+if(WIN32)
+    enable_language(RC)
+    include(cmake/SpoolCutWindows.cmake)
+endif()
 
 add_subdirectory(cpp)
 

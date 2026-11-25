@@ -45,7 +45,7 @@ def copy(source, target):
 def bundle(exe, app):
     files = set()
     cli = exe.with_name("spoolcut")
-    roots = [(exe, app / "bin/spoolcut-qt"),
+    roots = [(exe, app / "bin/spoolcut-desktop"),
              (cli, app / "bin/spoolcut"),
              (Path("/usr/bin/ffmpeg"), app / "bin/ffmpeg"),
              (Path("/usr/bin/ffprobe"), app / "bin/ffprobe")]
@@ -74,12 +74,12 @@ def bundle(exe, app):
             files.add(library.resolve())
 
     (app / "bin/qt.conf").write_text("[Paths]\nPlugins=../plugins\n", encoding="utf-8")
-    copy(Path("qt-prototype/AppRun"), app / "AppRun")
-    copy(Path("qt-prototype/io.github.bugrakoc.SpoolCut.QtPrototype.desktop"),
-         app / "io.github.bugrakoc.SpoolCut.QtPrototype.desktop")
-    copy(Path("assets/io.github.bugrakoc.SpoolCut.png"), app / "io.github.bugrakoc.SpoolCut.QtPrototype.png")
+    copy(Path("packaging/linux/AppRun"), app / "AppRun")
+    copy(Path("assets/io.github.bugrakoc.SpoolCut.desktop"),
+         app / "io.github.bugrakoc.SpoolCut.desktop")
+    copy(Path("assets/io.github.bugrakoc.SpoolCut.png"), app / "io.github.bugrakoc.SpoolCut.png")
     copy(Path("LICENSE"), app / "LICENSE")
-    copy(Path("qt-prototype/README.md"), app / "Read me.md")
+    copy(Path("README.md"), app / "Read me.md")
     (app / "source-revision.txt").write_text(output("git", "rev-parse", "HEAD") + "\n", encoding="utf-8")
     return files
 
@@ -123,9 +123,9 @@ def main():
     if output("git", "status", "--porcelain", "--untracked-files=no"):
         sys.exit("Commit the SpoolCut source before packaging.")
     dist.mkdir(parents=True, exist_ok=True)
-    app = dist / "SpoolCutQt.AppDir"
+    app = dist / "SpoolCut.AppDir"
     app.mkdir()
-    sources = dist / f"SpoolCut-{VERSION}-Qt-Linux-sources"
+    sources = dist / f"SpoolCut-{VERSION}-Linux-sources"
     sources.mkdir()
 
     runtime = dist / "runtime-x86_64"
@@ -139,14 +139,14 @@ def main():
           notice / "type2-runtime.tar.gz")
     fetch(f"https://raw.githubusercontent.com/AppImage/type2-runtime/{RUNTIME_REV}/LICENSE",
           app / "AppImage-runtime-LICENSE")
-    app_sources = Path("qt-prototype/runtime-sources.sh").resolve()
+    app_sources = Path("packaging/linux/runtime-sources.sh").resolve()
     run("bash", app_sources, notice, app / "runtime-licenses")
     files = bundle(executable, app)
     collect_sources(files, app, sources)
 
     fs = dist / "app.squashfs"
     run("mksquashfs", app, fs, "-comp", "zstd", "-noappend", "-processors", "2", "-root-owned")
-    image = dist / f"SpoolCut-{VERSION}-Qt-Fedora-x86_64.AppImage"
+    image = dist / f"SpoolCut-{VERSION}-Fedora-x86_64.AppImage"
     with image.open("wb") as stream:
         for part in (runtime, fs):
             with part.open("rb") as reader:

@@ -1,9 +1,10 @@
-name: Qt desktop parity and packages
+name: Desktop and packages
 
 on:
   push:
-    branches: [cpp-qt]
-    paths: ["VERSION", "cmake/**", "qt-prototype/**", "cpp/**", "packaging/windows/package.py", ".github/workflows/qt-prototype.yml"]
+    branches: [main, cpp-qt]
+  pull_request:
+    branches: [main, cpp-qt]
   workflow_dispatch:
 
 permissions:
@@ -19,6 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: msys2/setup-msys2@v2
         with:
@@ -41,30 +43,30 @@ jobs:
           g++ --version
           pkg-config --modversion Qt6Widgets mpv
           ffmpeg -version
-          cmake -S qt-prototype -B build-qt -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake -S . -B build-qt -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_COMPILE_WARNING_AS_ERROR=ON
           cmake --build build-qt
-          ctest --test-dir build-qt -V
+          ctest --test-dir build-qt -V -R '^desktop-'
       - name: Package binaries, notices and corresponding source
         run: |
           set -euo pipefail
-          python qt-prototype/package-windows.py "$(cygpath -m "$MINGW_PREFIX")" build-qt/spoolcut-qt.exe dist-qt-windows
+          python packaging/windows/package.py "$(cygpath -m "$MINGW_PREFIX")" build-qt/spoolcut-desktop.exe dist-windows
       - name: Exercise relocated binaries with system PATH
         shell: pwsh
-        run: ./qt-prototype/tests/smoke-portable.ps1
+        run: ./packaging/windows/smoke-portable.ps1
       - uses: actions/upload-artifact@v4
         with:
-          name: SpoolCut-Qt-Windows-x86_64
+          name: SpoolCut-Windows-x86_64
           path: |
-            dist-qt-windows/*.zip
-            dist-qt-windows/*.zip.sha256
+            dist-windows/*.zip
+            dist-windows/*.zip.sha256
           compression-level: 0
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
-          name: SpoolCut-Qt-Windows-sources
+          name: SpoolCut-Windows-sources
           path: |
-            dist-qt-windows/*.tar.zst
-            dist-qt-windows/*.tar.zst.sha256
+            dist-windows/*.tar.zst
+            dist-windows/*.tar.zst.sha256
           compression-level: 0
           if-no-files-found: error
 
@@ -80,6 +82,7 @@ jobs:
             qt6-base-dev qt6-wayland libmpv-dev ffmpeg libglib2.0-bin libgl1-mesa-dri weston xvfb xauth
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - name: Build and test with X11 and Mesa software OpenGL
         shell: bash
@@ -90,14 +93,14 @@ jobs:
           g++ --version
           pkg-config --modversion Qt6Widgets mpv
           ffmpeg -version
-          cmake -S qt-prototype -B build-qt -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake -S . -B build-qt -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_COMPILE_WARNING_AS_ERROR=ON
           cmake --build build-qt
-          xvfb-run -a ctest --test-dir build-qt -V
+          xvfb-run -a ctest --test-dir build-qt -V -R '^desktop-'
       - name: Verify automatic fallback without an OpenGL surface
         env:
           QT_QPA_PLATFORM: offscreen
           SPOOLCUT_QT_REQUIRE_FALLBACK: 1
-        run: ctest --test-dir build-qt -V -R '^prototype-auto$'
+        run: ctest --test-dir build-qt -V -R '^desktop-auto$'
       - name: Test headless Wayland with Mesa
         shell: bash
         env:
@@ -117,16 +120,16 @@ jobs:
             sleep 0.1
           done
           test -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
-          ctest --test-dir build-qt -V
+          ctest --test-dir build-qt -V -R '^desktop-'
       - name: Run ASan and UBSan
         env:
           QT_QPA_PLATFORM: offscreen
           ASAN_OPTIONS: detect_leaks=0
           UBSAN_OPTIONS: halt_on_error=1
         run: |
-          cmake -S qt-prototype -B build-qt-asan -G Ninja -DCMAKE_BUILD_TYPE=Debug -DSPOOLCUT_SANITIZERS=ON
+          cmake -S . -B build-qt-asan -G Ninja -DCMAKE_BUILD_TYPE=Debug -DSPOOLCUT_SANITIZERS=ON
           cmake --build build-qt-asan
-          ctest --test-dir build-qt-asan -V -R '^prototype-software$'
+          ctest --test-dir build-qt-asan -V -R '^desktop-software$'
 
   appimage:
     runs-on: ubuntu-24.04
@@ -134,6 +137,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - name: Build AppImage and gather corresponding source
         run: |
@@ -145,9 +149,9 @@ jobs:
               > /etc/apt/sources.list.d/debian-source.sources
             apt-get update
             git config --global --add safe.directory /src
-            cmake -S qt-prototype -B build-qt-package -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
+            cmake -S . -B build-qt-package -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
             cmake --build build-qt-package
-            python3 qt-prototype/package-linux.py build-qt-package/spoolcut-qt dist-qt-linux
+            python3 packaging/linux/package-linux.py build-qt-package/spoolcut-desktop dist-linux
           '
       - name: Run relocated AppImage with Fedora 44 Wayland
         run: |
@@ -168,26 +172,27 @@ jobs:
               sleep 0.1
             done
             test -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
-            bash qt-prototype/tests/smoke-appimage.sh dist-qt-linux/SpoolCut-"$(cat VERSION)"-Qt-Fedora-x86_64.AppImage
+            bash packaging/linux/smoke-appimage.sh dist-linux/SpoolCut-"$(cat VERSION)"-Fedora-x86_64.AppImage
           '
       - uses: actions/upload-artifact@v4
         with:
-          name: SpoolCut-Qt-Fedora-x86_64
+          name: SpoolCut-Fedora-x86_64
           path: |
-            dist-qt-linux/*.AppImage
-            dist-qt-linux/*.AppImage.sha256
+            dist-linux/*.AppImage
+            dist-linux/*.AppImage.sha256
           compression-level: 0
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
-          name: SpoolCut-Qt-Linux-sources
+          name: SpoolCut-Linux-sources
           path: |
-            dist-qt-linux/*.tar.zst
-            dist-qt-linux/*.tar.zst.sha256
+            dist-linux/*.tar.zst
+            dist-linux/*.tar.zst.sha256
           compression-level: 0
           if-no-files-found: error
 
   compare:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     container: rust:1-trixie
     timeout-minutes: 20
@@ -199,15 +204,16 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - name: Build both release editors
         run: |
           git -c safe.directory="$PWD" worktree add --detach /tmp/spoolcut-gtk 39cb4eecef8914f187871aac2187f8f023d14e0d
           cargo build --manifest-path /tmp/spoolcut-gtk/Cargo.toml --locked --release --features desktop --bins
-          cmake -S qt-prototype -B build-qt -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
+          cmake -S . -B build-qt -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
           cmake --build build-qt
       - name: Compare CPU, memory, startup and scrubbing
         run: |
           dbus-run-session -- xvfb-run -a -s '-screen 0 1280x900x24' \
-            /usr/bin/python3 qt-prototype/tests/compare-linux.py /tmp/spoolcut-gtk/target/release/spoolcut-desktop \
-            build-qt/spoolcut-qt /tmp/spoolcut-gtk/target/release/spoolcut
+            /usr/bin/python3 cpp/desktop/tests/compare-linux.py /tmp/spoolcut-gtk/target/release/spoolcut-desktop \
+            build-qt/spoolcut-desktop /tmp/spoolcut-gtk/target/release/spoolcut

@@ -2,7 +2,7 @@
 
 #include <QString>
 
-inline constexpr auto spoolCutDesktopId = "io.github.bugrakoc.SpoolCut.QtPrototype";
+inline constexpr auto spoolCutDesktopId = "io.github.bugrakoc.SpoolCut";
 
 QString registerAppImageLauncher();
 QString installAppImageLauncher(const QString &image, const QString &dataHome);
