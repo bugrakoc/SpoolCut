@@ -12,7 +12,7 @@ In UCRT64, update MSYS2 with `pacman -Syu`. If it asks you to close the shell,
 reopen UCRT64 and run the update again. Then install the build dependencies.
 
 ```sh
-pacman -S --needed git zstd \
+pacman -S --needed git tar zstd \
   mingw-w64-ucrt-x86_64-{gcc,rust,pkgconf,gtk4,mpv,ffmpeg,python,adwaita-icon-theme,hicolor-icon-theme}
 cargo test --locked --features desktop
 SPOOLCUT_PREVIEW=software GSK_RENDERER=cairo GTK_A11Y=none \

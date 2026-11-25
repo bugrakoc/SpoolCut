@@ -67,6 +67,7 @@ jobs:
           update: true
           install: >-
             git
+            tar
             zstd
             mingw-w64-ucrt-x86_64-gcc
             mingw-w64-ucrt-x86_64-rust

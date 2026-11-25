@@ -171,6 +171,7 @@ def write_archives(prefix, bundle, sources, output, packages):
     native_sources = sources / "MSYS2"
     native_sources.mkdir()
     filenames = sorted(filenames)
+    print(f"Collected {len(packages)} runtime package records. Downloading {len(filenames)} source archives.", flush=True)
     with ThreadPoolExecutor(max_workers=6) as pool:
         list(pool.map(lambda name: download_source(name, native_sources), filenames))
     # Use MSYS2 Bash explicitly. Windows may resolve an unqualified bash.exe
