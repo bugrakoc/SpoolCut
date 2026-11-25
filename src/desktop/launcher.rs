@@ -7,9 +7,7 @@ use std::{
 use anyhow::{Context, Result};
 use gtk::glib::{self, KeyFile, KeyFileFlags};
 
-use crate::APPLICATION_ID;
-
-pub const APP_ICON: &[u8] = include_bytes!("../../assets/io.github.bugrakoc.SpoolCut.png");
+use crate::{APP_ICON, APPLICATION_ID};
 const DESKTOP_ENTRY: &str = include_str!("../../assets/io.github.bugrakoc.SpoolCut.desktop");
 const GROUP: &str = "Desktop Entry";
 const MANAGED: &str = "X-SpoolCut-AppImage";

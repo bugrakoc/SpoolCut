@@ -285,15 +285,21 @@ fn sequence(
             "-v",
             "error",
             "-show_entries",
-            "format=duration",
+            "format=duration:stream_disposition=default",
             "-of",
-            "default=nw=1:nk=1",
+            "json",
             "-i",
         ])
         .arg(output));
-    let actual: f64 = String::from_utf8(result.stdout)
+    let info: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+    let streams = info["streams"].as_array().unwrap();
+    assert_eq!(streams.len(), 2);
+    for stream in streams {
+        assert_eq!(stream["disposition"]["default"], 1);
+    }
+    let actual: f64 = info["format"]["duration"]
+        .as_str()
         .unwrap()
-        .trim()
         .parse()
         .unwrap();
     assert!((actual - duration_us as f64 / 1_000_000.0).abs() < 0.002);
@@ -421,4 +427,85 @@ fn keeps_an_existing_output() {
         spoolcut::export(&project, directory.path(), &output, &AtomicBool::new(false)).unwrap_err();
     assert!(format!("{error:#}").contains("output already exists"));
     assert_eq!(fs::read(&output).unwrap(), b"existing");
+}
+
+#[test]
+fn unicode_paths_and_a_destination_created_during_verification() {
+    let scratch = tempfile::tempdir().unwrap();
+    let mut destination_dir = scratch.path().join("export # çığ ' space");
+    // Keep each component below NAME_MAX while exercising a Windows path over MAX_PATH.
+    for _ in 0..5 {
+        destination_dir =
+            destination_dir.join("long directory component with spaces and unicode ş");
+    }
+    fs::create_dir_all(&destination_dir).unwrap();
+
+    let source = scratch.path().join("kamera görüntüsü 01.mp4");
+    fixture(&source, FixtureVideo::H264, 0, 12800);
+    let info = inspect(&source);
+    let project = Project {
+        sources: [("a".into(), PathBuf::from(source.file_name().unwrap()))].into(),
+        clips: vec![Clip {
+            source: "a".into(),
+            in_pts: info.safe_in_pts[0],
+            out_pts: info.safe_in_pts[1],
+        }],
+    };
+    let project_path = scratch.path().join("kurgu ğ.json");
+    project.save(&project_path).unwrap();
+    assert_eq!(Project::load(&project_path).unwrap(), project);
+    let output = destination_dir.join("birleşik video.mkv");
+    let cancel = AtomicBool::new(false);
+    let error =
+        spoolcut::export_with_progress(&project, scratch.path(), &output, &cancel, |stage| {
+            if matches!(stage, spoolcut::ExportProgress::Verifying) {
+                fs::write(&output, b"existing").unwrap();
+            }
+        })
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("publishing"), "{error:#}");
+    assert_eq!(fs::read(&output).unwrap(), b"existing");
+    assert_eq!(fs::read_dir(&destination_dir).unwrap().count(), 1);
+
+    fs::remove_file(&output).unwrap();
+    spoolcut::export(&project, scratch.path(), &output, &cancel).unwrap();
+    assert!(output.is_file());
+    assert_eq!(fs::read_dir(destination_dir).unwrap().count(), 1);
+
+    #[cfg(windows)]
+    if let Some(path) = std::env::var_os("SPOOLCUT_TEST_OTHER_VOLUME") {
+        let other = tempfile::tempdir_in(path).unwrap();
+        let source_drive = scratch.path().components().next();
+        assert_ne!(source_drive, other.path().components().next());
+        let across_drives = other.path().join("ikinci sürücü.mkv");
+        spoolcut::export(&project, scratch.path(), &across_drives, &cancel).unwrap();
+        assert!(across_drives.is_file());
+        assert_eq!(fs::read_dir(other.path()).unwrap().count(), 1);
+    }
+}
+
+#[cfg(windows)]
+#[test]
+fn a_locked_project_cannot_be_replaced_and_keeps_its_previous_contents() {
+    use std::{fs::OpenOptions, os::windows::fs::OpenOptionsExt};
+
+    let scratch = tempfile::tempdir().unwrap();
+    let path = scratch.path().join("locked.json");
+    let original = Project::default();
+    original.save(&path).unwrap();
+    let lock = OpenOptions::new()
+        .read(true)
+        .share_mode(0)
+        .open(&path)
+        .unwrap();
+    let updated = Project {
+        sources: [("a".into(), PathBuf::from("a.mp4"))].into(),
+        clips: Vec::new(),
+    };
+    assert!(updated.save(&path).is_err());
+    drop(lock);
+    assert_eq!(Project::load(&path).unwrap(), original);
+    assert_eq!(fs::read_dir(scratch.path()).unwrap().count(), 1);
+    updated.save(&path).unwrap();
+    assert_eq!(Project::load(&path).unwrap(), updated);
 }

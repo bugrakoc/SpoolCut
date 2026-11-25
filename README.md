@@ -2,7 +2,7 @@
 
 <img src="assets/io.github.bugrakoc.SpoolCut.png" alt="SpoolCut icon" width="96" height="96">
 
-Cut and join video without re-encoding. SpoolCut has a GTK desktop editor and a command-line tool on Linux.
+Cut and join video without re-encoding. SpoolCut has a GTK desktop editor and a command-line tool. See the [Windows build and testing guide](docs/WINDOWS.md) for the Windows 11 port.
 
 ## Desktop editor
 
@@ -60,7 +60,7 @@ target/release/spoolcut plan timeline.json
 target/release/spoolcut export timeline.json output.mkv
 ```
 
-Press Ctrl+C to cancel. SpoolCut checks the staged MKV before publishing it and preserves any existing destination. The destination filesystem must support hard links for atomic publication. Allow temporary space for the copied clips and the joined file. Export reads each source again for each clip that uses it.
+Press Ctrl+C to cancel. SpoolCut checks the staged MKV before publishing it and preserves any existing destination. Linux requires hard links on the destination filesystem. Windows uses a same-volume rename with replacement disabled. Allow temporary space for the copied clips and the joined file. Export reads each source again for each clip that uses it.
 
 ## Supported footage
 

@@ -1,5 +1,9 @@
+#![cfg_attr(all(windows, not(test)), windows_subsystem = "windows")]
+
 mod editor;
+mod graphics;
 mod interactive;
+#[cfg(target_os = "linux")]
 mod launcher;
 mod preview;
 mod timeline;
@@ -28,6 +32,7 @@ use timeline::{ClipVisual, Draft, Edge, Hit};
 use widgets::{Widgets, seconds};
 
 const APPLICATION_ID: &str = "io.github.bugrakoc.SpoolCut";
+const APP_ICON: &[u8] = include_bytes!("../../assets/io.github.bugrakoc.SpoolCut.png");
 
 #[derive(Default)]
 struct State {
@@ -118,6 +123,7 @@ fn main() -> glib::ExitCode {
     glib::set_prgname(Some(APPLICATION_ID));
     let application =
         gtk::Application::new(Some(APPLICATION_ID), gio::ApplicationFlags::HANDLES_OPEN);
+    #[cfg(target_os = "linux")]
     application.connect_startup(|_| {
         if let Err(error) = launcher::register_appimage() {
             eprintln!("Could not register the SpoolCut desktop launcher: {error:#}");
@@ -156,6 +162,9 @@ impl App {
             timeline_drag: RefCell::new(None),
         });
         app.connect();
+        if !graphics::prefer_opengl() {
+            app.schedule_software_preview(None);
+        }
         app.refresh();
         let current = Rc::clone(&app);
         glib::timeout_add_local(Duration::from_millis(24), move || {
@@ -227,6 +236,16 @@ impl App {
                 app.append();
             }
         });
+        let file_drop = gtk::DropTarget::new(gdk::FileList::static_type(), gdk::DragAction::COPY);
+        let weak = Rc::downgrade(self);
+        file_drop.connect_drop(move |_, value, _, _| {
+            let Ok(files) = value.get::<gdk::FileList>() else {
+                return false;
+            };
+            weak.upgrade()
+                .is_some_and(|app| app.import_files(files.files()))
+        });
+        self.ui.media_bin.add_controller(file_drop);
         self.connect_timeline();
         let weak = Rc::downgrade(self);
         self.ui.window.connect_close_request(move |_| {
@@ -254,13 +273,21 @@ impl App {
         let weak = Rc::downgrade(self);
         self.ui.canvas.connect_realize(move |area| {
             let Some(app) = weak.upgrade() else { return };
+            if !graphics::prefer_opengl() {
+                return;
+            }
             area.make_current();
             let result = area
                 .error()
                 .map_or_else(Preview::new, |error| Err(error.into()));
             match result {
-                Ok(player) => *app.preview.borrow_mut() = Some(player),
-                Err(error) => app.schedule_software_preview(error),
+                Ok(player) => {
+                    *app.preview.borrow_mut() = Some(player);
+                    app.ui
+                        .preview_stack
+                        .set_tooltip_text(Some("OpenGL preview"));
+                }
+                Err(error) => app.schedule_software_preview(Some(error)),
             }
             app.controls();
         });
@@ -276,7 +303,7 @@ impl App {
                 .filter(|player| !player.is_software())
                 .map(Preview::draw);
             if let Some(Err(error)) = result {
-                app.schedule_software_preview(error);
+                app.schedule_software_preview(Some(error));
             }
             glib::Propagation::Stop
         });
@@ -292,7 +319,7 @@ impl App {
         });
     }
 
-    fn schedule_software_preview(self: &Rc<Self>, cause: anyhow::Error) {
+    fn schedule_software_preview(self: &Rc<Self>, cause: Option<anyhow::Error>) {
         if self.fallback_queued.replace(true) {
             return;
         }
@@ -322,7 +349,15 @@ impl App {
             };
             match Preview::new_software() {
                 Ok(player) => {
-                    eprintln!("OpenGL preview unavailable, using software rendering: {cause:#}");
+                    let tooltip = if let Some(cause) = cause {
+                        eprintln!(
+                            "OpenGL preview unavailable, using software rendering: {cause:#}"
+                        );
+                        format!("Software preview\nOpenGL unavailable: {cause:#}")
+                    } else {
+                        "Software preview".into()
+                    };
+                    app.ui.preview_stack.set_tooltip_text(Some(&tooltip));
                     *app.preview.borrow_mut() = Some(player);
                     app.ui
                         .preview_stack
@@ -332,7 +367,12 @@ impl App {
                     }
                 }
                 Err(error) => {
-                    let message = format!("OpenGL preview: {cause:#}. Software preview: {error:#}");
+                    let message = match cause {
+                        Some(cause) => {
+                            format!("OpenGL preview: {cause:#}. Software preview: {error:#}")
+                        }
+                        None => format!("Software preview: {error:#}"),
+                    };
                     eprintln!("{message}");
                     *app.preview_error.borrow_mut() = Some(message.clone());
                     app.state.borrow_mut().playing = false;
@@ -475,19 +515,26 @@ impl App {
             gio::Cancellable::NONE,
             move |result| {
                 if let Ok(files) = result {
-                    let paths: Vec<_> = (0..files.n_items())
+                    let files = (0..files.n_items())
                         .filter_map(|i| files.item(i))
-                        .filter_map(|item| item.downcast::<gio::File>().ok())
-                        .filter_map(|file| file.path())
-                        .collect();
-                    if paths.is_empty() {
-                        app.ui.message("Choose local MP4 or MOV files.");
-                    } else {
-                        app.start_index(paths, IndexIntent::Import);
-                    }
+                        .filter_map(|item| item.downcast::<gio::File>().ok());
+                    app.import_files(files);
                 }
             },
         );
+    }
+
+    fn import_files(&self, files: impl IntoIterator<Item = gio::File>) -> bool {
+        if self.closed.get() || self.state.borrow().job.is_some() {
+            return false;
+        }
+        let paths: Vec<_> = files.into_iter().filter_map(|file| file.path()).collect();
+        if paths.is_empty() {
+            self.ui.message("Choose local MP4 or MOV files.");
+            return false;
+        }
+        self.start_index(paths, IndexIntent::Import);
+        true
     }
 
     fn relink(self: &Rc<Self>) {
@@ -894,20 +941,17 @@ impl App {
                 .sources
                 .iter()
                 .map(|(id, path)| {
-                    let detail = match editor.media.get(path) {
-                        Some(Ok(media)) => media_details(&media.info),
-                        Some(Err(_)) => "Unavailable · Relink source".into(),
-                        None => "Inspecting…".into(),
+                    let (detail, error) = match editor.media.get(path) {
+                        Some(Ok(media)) => (media_details(&media.info), None),
+                        Some(Err(error)) => ("Unavailable · Relink source".into(), Some(error)),
+                        None => ("Inspecting…".into(), None),
                     };
-                    let error = editor
-                        .media
-                        .get(path)
-                        .and_then(|result| result.as_ref().err().cloned());
                     (
                         id.clone(),
                         source_name(path),
                         detail,
-                        error.unwrap_or_else(|| path.display().to_string()),
+                        error.is_some(),
+                        error.cloned().unwrap_or_else(|| path.display().to_string()),
                     )
                 })
                 .collect();
@@ -965,7 +1009,7 @@ impl App {
         while let Some(child) = self.ui.media.first_child() {
             self.ui.media.remove(&child);
         }
-        for (id, name, detail, tooltip) in media {
+        for (id, name, detail, unavailable, tooltip) in media {
             let row = gtk::ListBoxRow::new();
             let text = gtk::Box::new(gtk::Orientation::Vertical, 4);
             text.set_margin_start(9);
@@ -978,7 +1022,11 @@ impl App {
             let detail = gtk::Label::new(Some(&detail));
             detail.set_xalign(0.0);
             detail.set_ellipsize(gtk::pango::EllipsizeMode::End);
-            detail.add_css_class("dim-label");
+            detail.add_css_class(if unavailable {
+                "media-unavailable"
+            } else {
+                "dim-label"
+            });
             text.append(&name);
             text.append(&detail);
             row.set_tooltip_text(Some(&tooltip));

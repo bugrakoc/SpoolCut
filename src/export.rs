@@ -1,10 +1,5 @@
 use std::{
-    collections::BTreeMap,
-    fs::{self, File},
-    io::Write,
-    ops::Range,
-    path::Path,
-    process::Command,
+    collections::BTreeMap, fs::File, io::Write, ops::Range, path::Path, process::Command,
     sync::atomic::AtomicBool,
 };
 
@@ -12,8 +7,8 @@ use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    Clip, MediaInfo, Project,
-    media::{Media, Packet, Stream, media_info, probe, read_packets},
+    Clip, MediaInfo, Project, filesystem,
+    media::{Media, Packet, Stream, decode_extradata, media_info, probe, read_packets},
     process,
     time::{TimeBase, ffmpeg_time},
 };
@@ -124,49 +119,79 @@ pub fn export_with_progress(
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or(Path::new("."));
+    let parent = parent.canonicalize()?;
+    let destination = parent.join(output.file_name().context("missing output filename")?);
     let workspace = tempfile::Builder::new()
         .prefix(".spoolcut-")
-        .tempdir_in(parent)
+        .tempdir_in(&parent)
         .with_context(|| format!("creating temporary files in {}", parent.display()))?;
     // Absolute paths remain valid while the concat subprocess uses the temporary directory.
     let directory = workspace.path().canonicalize()?;
-    let mut manifest = File::create(directory.join("timeline.ffconcat"))?;
+    let manifest_path = directory.join("timeline.ffconcat");
+    let mut manifest = File::create(&manifest_path)?;
     writeln!(manifest, "ffconcat version 1.0")?;
     for (index, clip) in plan.clips.iter().enumerate() {
         progress(ExportProgress::Copying {
             completed: index,
             total: plan.clips.len(),
         });
-        let name = format!("{index}.mkv");
+        let name = format!("{index}.mp4");
         let media = &sources[&clip.source];
         media.check_source()?;
         write_clip(media, clip, &directory.join(&name), cancel)
             .with_context(|| format!("copying clip {} ({})", index + 1, clip.source))?;
+        #[cfg(not(windows))]
         writeln!(manifest, "file {name}")?;
+        #[cfg(windows)]
+        {
+            // A verbatim Windows path can contain '?' and the working directory
+            // passed to CreateProcess has length limits. Use a complete file URL
+            // so the concat demuxer does not try to resolve a relative URL.
+            let segment = directory.join(&name);
+            let path = segment
+                .to_str()
+                .context("FFmpeg requires a Unicode path on Windows")?;
+            let quoted = path.replace('\'', "'\\''");
+            writeln!(manifest, "file 'file:{quoted}'")?;
+        }
         writeln!(manifest, "duration {}", ffmpeg_time(clip.duration_us))?;
     }
     drop(manifest);
 
     progress(ExportProgress::Joining);
     let staged_output = directory.join("output.mkv");
-    let mut command = ffmpeg();
-    command.current_dir(&directory).args([
-        "-protocol_whitelist",
-        "file",
-        "-f",
-        "concat",
-        "-safe",
-        "1",
-        "-auto_convert",
-        "0",
-        "-i",
-        "timeline.ffconcat",
-        "-map",
-        "0:v:0",
-        "-map",
-        "0:a:0",
-    ]);
-    mkv_output(&mut command, &staged_output);
+    let mut command = ffmpeg()?;
+    #[cfg(windows)]
+    let input = manifest_path.as_path();
+    #[cfg(not(windows))]
+    let input = {
+        command.current_dir(&directory);
+        Path::new("timeline.ffconcat")
+    };
+    command
+        .args([
+            "-protocol_whitelist",
+            "file",
+            "-f",
+            "concat",
+            "-safe",
+            if cfg!(windows) { "0" } else { "1" },
+            "-auto_convert",
+            "0",
+            "-i",
+        ])
+        .arg(input)
+        .args([
+            "-map",
+            "0:v:0",
+            "-map",
+            "0:a:0",
+            "-disposition:v:0",
+            "default",
+            "-disposition:a:0",
+            "default",
+        ]);
+    copy_output(&mut command, "matroska", &staged_output);
     process::run(&mut command, None, cancel).context("joining copied clips")?;
     progress(ExportProgress::Verifying);
     verify(&staged_output, &plan, &sources, cancel).context("verifying joined output")?;
@@ -175,7 +200,7 @@ pub fn export_with_progress(
     }
     process::check(cancel)?;
     // Publish on the same filesystem, atomically and without overwriting an existing path.
-    fs::hard_link(&staged_output, output)
+    filesystem::publish(&staged_output, &destination)
         .with_context(|| format!("publishing {}", output.display()))?;
     Ok(())
 }
@@ -319,8 +344,8 @@ fn plan_audio(media: &Media, clip: &Clip) -> Result<Range<usize>> {
     Ok(start..end)
 }
 
-fn ffmpeg() -> Command {
-    let mut command = Command::new("ffmpeg");
+fn ffmpeg() -> Result<Command> {
+    let mut command = process::tool("ffmpeg")?;
     command.args([
         "-nostdin",
         "-hide_banner",
@@ -329,10 +354,10 @@ fn ffmpeg() -> Command {
         "-xerror",
         "-n",
     ]);
-    command
+    Ok(command)
 }
 
-fn mkv_output(command: &mut Command, output: &Path) {
+fn copy_output(command: &mut Command, format: &str, output: &Path) {
     command
         .args([
             "-c",
@@ -344,7 +369,7 @@ fn mkv_output(command: &mut Command, output: &Path) {
             "-avoid_negative_ts",
             "disabled",
             "-f",
-            "matroska",
+            format,
         ])
         .arg(output);
 }
@@ -353,7 +378,7 @@ fn write_clip(media: &Media, clip: &PlannedClip, output: &Path, cancel: &AtomicB
     let offset = media.video_base.micros(-i128::from(clip.in_pts))?;
     let select =
         |range: &Range<usize>| format!("noise=drop=lt(n\\,{})+gte(n\\,{})", range.start, range.end);
-    let mut command = ffmpeg();
+    let mut command = ffmpeg()?;
     // The bitstream filter counts demuxed packets independently for each mapped stream.
     // Timestamp seeking can select a different packet at the same nominal cut time.
     command
@@ -380,18 +405,77 @@ fn write_clip(media: &Media, clip: &PlannedClip, output: &Path, cancel: &AtomicB
             "-bsf:a",
             &select(&clip.audio_packets),
         ]);
-    mkv_output(&mut command, output);
+    // Fragmented MP4 retains the AAC packet timing without carrying over
+    // source priming or inferring discard padding for a delayed audio start.
+    // Use one video time base for concat, even when sources differ.
+    command.args([
+        "-movflags",
+        "+frag_keyframe+delay_moov+default_base_moof",
+        "-use_editlist",
+        "1",
+        "-movie_timescale",
+        "1000000",
+        "-video_track_timescale",
+        "1000000",
+    ]);
+    copy_output(&mut command, "mp4", output);
     process::run(&mut command, None, cancel)
 }
 
 #[derive(Deserialize)]
-struct OutputDuration {
+struct OutputInfo {
     format: ContainerDuration,
+    streams: Vec<OutputStream>,
 }
 
 #[derive(Deserialize)]
 struct ContainerDuration {
     duration: String,
+}
+
+#[derive(Deserialize)]
+struct OutputStream {
+    codec_type: String,
+    codec_name: String,
+    extradata: Option<String>,
+}
+
+#[derive(PartialEq, Eq)]
+struct HevcConfiguration<'a> {
+    nal_length_size: u8,
+    nals: Vec<(u8, &'a [u8])>,
+}
+
+fn hevc_configuration(data: &[u8]) -> Result<HevcConfiguration<'_>> {
+    let (header, mut arrays) = data
+        .split_at_checked(23)
+        .context("incomplete HEVC header")?;
+    ensure!(header[0] == 1, "invalid HEVC configuration version");
+    let mut nals = Vec::new();
+    for _ in 0..header[22] {
+        let (array, rest) = arrays
+            .split_first_chunk::<3>()
+            .context("incomplete HEVC array")?;
+        arrays = rest;
+        for _ in 0..u16::from_be_bytes([array[1], array[2]]) {
+            let (length, rest) = arrays
+                .split_first_chunk::<2>()
+                .context("missing HEVC NAL length")?;
+            let (nal, rest) = rest
+                .split_at_checked(usize::from(u16::from_be_bytes(*length)))
+                .context("incomplete HEVC NAL")?;
+            nals.push((array[0] & 0x3f, nal));
+            arrays = rest;
+        }
+    }
+    ensure!(arrays.is_empty(), "unexpected data after HEVC arrays");
+    // Matroska can rewrite hvcC array order and completeness flags. The
+    // decoder still needs the same NAL length size and configuration units.
+    nals.sort_unstable();
+    Ok(HevcConfiguration {
+        nal_length_size: (header[21] & 3) + 1,
+        nals,
+    })
 }
 
 fn verify(
@@ -434,7 +518,7 @@ fn verify(
                     + i128::from(clip.timeline_start_us);
                 let actual_us = MKV_TIME_BASE
                     .micros(i128::from(output.pts.context("output packet has no PTS")?))?;
-                // The intermediate and final Matroska muxes round to millisecond ticks.
+                // The final Matroska mux rounds to millisecond ticks.
                 ensure!(
                     (expected_us - i128::from(actual_us)).abs() <= 1_001,
                     "{label} timestamp changed in clip {} (expected {} µs, got {} µs)",
@@ -443,7 +527,9 @@ fn verify(
                     actual_us
                 );
                 ensure!(
-                    output.size == packet.size && output.is_key() == packet.is_key(),
+                    output.usable()
+                        && output.size == packet.size
+                        && output.is_key() == packet.is_key(),
                     "{label} packet framing changed in clip {}",
                     index + 1
                 );
@@ -454,13 +540,44 @@ fn verify(
         video.next().is_none() && audio.next().is_none(),
         "unexpected extra output packets"
     );
-    let OutputDuration { format } = probe(
+    let OutputInfo { format, streams } = probe(
         path,
         "matroska",
-        &["-show_format"],
-        "format=duration",
+        &["-show_format", "-show_streams", "-show_data"],
+        "format=duration:stream=codec_type,codec_name,extradata",
         cancel,
     )?;
+    let reference = &sources[&plan.clips[0].source];
+    ensure!(
+        streams.len() == 2,
+        "expected one video and one audio stream"
+    );
+    for (actual, expected) in streams.iter().zip([&reference.video, &reference.audio]) {
+        ensure!(
+            actual.codec_type == expected.codec_type
+                && actual.codec_name == expected.parameter("codec_name")?,
+            "output {} codec changed",
+            expected.codec_type
+        );
+        let output_config = actual.extradata.as_deref().with_context(|| {
+            format!(
+                "output {} decoder configuration is missing",
+                expected.codec_type
+            )
+        })?;
+        let source_config = expected.parameter("extradata")?;
+        let configuration_matches = if actual.codec_name == "hevc" {
+            hevc_configuration(&decode_extradata(output_config)?)?
+                == hevc_configuration(&decode_extradata(source_config)?)?
+        } else {
+            output_config == source_config
+        };
+        ensure!(
+            configuration_matches,
+            "output {} decoder configuration changed",
+            expected.codec_type
+        );
+    }
     let (whole, fraction) = format
         .duration
         .split_once('.')
