@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #pragma once
 
+#include <QColor>
 #include <QWidget>
 
 #include <optional>
@@ -10,13 +11,17 @@ struct PreviewClip {
     QString label;
     double duration;
     std::vector<double> safeOffsets;
+    QColor color{};
+    QString unavailable{};
 };
+
+QColor sourceColor(size_t row);
 
 class Timeline final : public QWidget {
     Q_OBJECT
 public:
     explicit Timeline(QWidget *parent = nullptr);
-    void setClips(std::vector<PreviewClip> clips);
+    void setClips(std::vector<PreviewClip> clips, const QString &timingProblem = {});
     void setSelected(std::optional<size_t> row);
     void setPosition(double seconds, bool follow = false);
     void zoom(double factor);
@@ -24,6 +29,8 @@ public:
     void cancelDrag();
     double xAt(double seconds) const;
     double duration() const { return duration_; }
+    bool hasTiming() const { return timingProblem_.isEmpty(); }
+    const std::vector<PreviewClip> &clips() const { return clips_; }
 
 signals:
     void scrubbed(double seconds);
@@ -65,6 +72,7 @@ private:
     std::optional<size_t> selected_;
     std::optional<Gesture> drag_;
     std::optional<double> draft_;
+    QString timingProblem_;
     double duration_ = 0;
     double position_ = 0;
     double zoom_ = 1;

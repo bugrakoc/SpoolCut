@@ -5,22 +5,29 @@
 
 #include <QAction>
 #include <QCloseEvent>
+#include <QCoreApplication>
 #include <QDir>
 #include <QDragEnterEvent>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFontDatabase>
+#include <QHBoxLayout>
 #include <QKeySequence>
 #include <QLabel>
 #include <QListWidget>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QMimeData>
+#include <QPainter>
 #include <QProgressBar>
 #include <QSignalBlocker>
 #include <QSplitter>
 #include <QStatusBar>
+#include <QStyledItemDelegate>
 #include <QToolBar>
+#include <QToolButton>
 #include <QUrl>
+#include <QVBoxLayout>
 
 #include <algorithm>
 #include <cmath>
@@ -45,6 +52,87 @@ protected:
         return data;
     }
 };
+
+constexpr int mediaColorRole = Qt::UserRole + 1;
+constexpr int mediaErrorRole = Qt::UserRole + 2;
+
+class MediaRow final : public QStyledItemDelegate {
+public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+
+    QSize sizeHint(const QStyleOptionViewItem &option, const QModelIndex &) const override
+    {
+        return {200, std::max(50, 2 * option.fontMetrics.height() + 16)};
+    }
+
+    void paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const override
+    {
+        auto style = option;
+        initStyleOption(&style, index);
+        const auto &palette = style.palette;
+        const bool selected = style.state.testFlag(QStyle::State_Selected);
+        const bool warning = index.data(mediaErrorRole).toBool();
+        const bool dark = palette.base().color().lightness() < 128;
+        const auto area = QRectF(style.rect.adjusted(1, 1, -1, -1));
+        const auto color = index.data(mediaColorRole).value<QColor>();
+        const auto accent = warning ? (dark ? QColor(0xff9d89u) : QColor(0xb64431u))
+                                    : dark ? color.lighter(165) : color;
+
+        painter->save();
+        painter->setRenderHint(QPainter::Antialiasing);
+        painter->setClipRect(style.rect);
+        auto fill = selected ? palette.highlight().color() : palette.alternateBase().color();
+        if (!selected && style.state.testFlag(QStyle::State_MouseOver))
+            fill = dark ? fill.lighter(116) : fill.darker(104);
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(fill);
+        painter->drawRoundedRect(area, 6, 6);
+        painter->setBrush(selected ? palette.highlightedText() : QBrush(accent));
+        painter->drawRoundedRect(QRectF(area.left() + 5, area.top() + 8, 3, area.height() - 16), 1.5, 1.5);
+
+        const auto row = area.adjusted(16, 0, -9, 0);
+        const int width = std::max(0, static_cast<int>(row.width()));
+        const auto lineHeight = style.fontMetrics.height();
+        const auto content = index.data(Qt::DisplayRole).toString();
+        const auto name = content.section(QLatin1Char('\n'), 0, 0);
+        const auto metadata = content.section(QLatin1Char('\n'), 1);
+        auto title = style.font;
+        title.setWeight(QFont::DemiBold);
+        painter->setFont(title);
+        painter->setPen(selected ? palette.highlightedText().color() : palette.text().color());
+        painter->drawText(QRectF(row.left(), row.center().y() - lineHeight - 1, row.width(), lineHeight),
+                          Qt::AlignVCenter, painter->fontMetrics().elidedText(name, Qt::ElideRight, width));
+        painter->setFont(style.font);
+        painter->setPen(selected ? palette.highlightedText().color()
+                                 : warning ? accent : palette.color(QPalette::PlaceholderText));
+        painter->drawText(QRectF(row.left(), row.center().y() + 1, row.width(), lineHeight),
+                          Qt::AlignVCenter, painter->fontMetrics().elidedText(metadata, Qt::ElideRight, width));
+        painter->restore();
+    }
+};
+
+QLabel *panelHeading(const QString &title, QWidget *parent)
+{
+    auto *label = new QLabel(title, parent);
+    auto font = label->font();
+    font.setWeight(QFont::DemiBold);
+    label->setFont(font);
+    return label;
+}
+
+QToolButton *actionButton(QAction *action, QWidget *parent, const QString &label = {})
+{
+    auto *button = new QToolButton(parent);
+    if (!label.isEmpty())
+        action->setIconText(label);
+    button->setDefaultAction(action);
+    button->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    if (!label.isEmpty()) {
+        button->setAccessibleName(action->text());
+        button->setToolTip(action->text());
+    }
+    return button;
+}
 
 double seconds(qint64 time) { return static_cast<double>(time) / 1'000'000; }
 
@@ -75,22 +163,17 @@ Window::Window()
 {
     setAcceptDrops(true);
     resize(960, 660);
-    auto *upper = new QSplitter(Qt::Horizontal, this);
     media_->setAccessibleName(tr("Media bin"));
-    media_->setMinimumWidth(140);
+    media_->setFrameShape(QFrame::NoFrame);
+    media_->setSpacing(2);
+    media_->setMouseTracking(true);
+    media_->setUniformItemSizes(true);
+    media_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    media_->setItemDelegate(new MediaRow(media_));
     media_->setDragEnabled(true);
     media_->setDragDropMode(QAbstractItemView::DragOnly);
     media_->setDefaultDropAction(Qt::CopyAction);
-    upper->addWidget(media_);
-    upper->addWidget(preview_);
-    upper->setSizes({240, 720});
-    upper->setChildrenCollapsible(false);
-    auto *layout = new QSplitter(Qt::Vertical, this);
-    layout->addWidget(upper);
-    layout->addWidget(timeline_);
-    layout->setStretchFactor(0, 1);
-    layout->setChildrenCollapsible(false);
-    setCentralWidget(layout);
+    clock_->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
 
     auto *file = menuBar()->addMenu(tr("&File"));
     auto *fresh = file->addAction(tr("&New project"), QKeySequence::New, this, [this] {
@@ -146,22 +229,99 @@ Window::Window()
     playback->addAction(tr("Previous safe keyframe"), QKeySequence(Qt::Key_Left), this, [this] { keyframe(false); });
     playback->addAction(tr("Next safe keyframe"), QKeySequence(Qt::Key_Right), this, [this] { keyframe(true); });
     auto *view = menuBar()->addMenu(tr("&View"));
-    auto *out = view->addAction(tr("Zoom out"), QKeySequence::ZoomOut, this, [this] { timeline_->zoom(1 / 1.5); });
-    auto *in = view->addAction(tr("Zoom in"), QKeySequence::ZoomIn, this, [this] { timeline_->zoom(1.5); });
+    auto *out = view->addAction(tr("Zoom out"), QKeySequence(Qt::Key_Minus), this, [this] { timeline_->zoom(1 / 1.5); });
+    auto *in = view->addAction(tr("Zoom in"), QKeySequence(Qt::Key_Plus), this, [this] { timeline_->zoom(1.5); });
+    out->setShortcuts({QKeySequence(Qt::Key_Minus), QKeySequence::ZoomOut});
+    in->setShortcuts({QKeySequence(Qt::Key_Plus), QKeySequence(Qt::Key_Equal), QKeySequence::ZoomIn});
     auto *fit = view->addAction(tr("Fit timeline"), this, [this] { timeline_->fit(); });
 
-    auto *toolbar = addToolBar(tr("Editing controls"));
+    auto *help = menuBar()->addMenu(tr("&Help"));
+    help->addAction(tr("&About SpoolCut"), this, [this] {
+        QMessageBox::about(this, tr("About SpoolCut"),
+                           tr("SpoolCut %1").arg(QCoreApplication::applicationVersion()));
+    });
+
+    auto *toolbar = addToolBar(tr("Project controls"));
     toolbar->setMovable(false);
-    toolbar->addActions({import, append_, play_, split_});
-    toolbar->addSeparator();
-    toolbar->addActions({out, in, fit});
-    toolbar->addSeparator();
-    toolbar->addActions({export_, cancelAction_});
+    toolbar->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    fresh->setIconText(tr("New"));
+    open->setIconText(tr("Open…"));
+    save->setIconText(tr("Save"));
+    toolbar->addActions({fresh, open, save});
+    auto *spacer = new QWidget(toolbar);
+    spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    toolbar->addWidget(spacer);
+    toolbar->addAction(cancelAction_);
+    auto *exportButton = actionButton(export_, toolbar, tr("Export MKV…"));
+    exportButton->setStyleSheet(QStringLiteral(
+        "QToolButton { color: palette(highlighted-text); background: palette(highlight); "
+        "border-radius: 5px; padding: 4px 12px; margin: 2px 6px; } "
+        "QToolButton:disabled { color: palette(placeholder-text); background: palette(button); }"));
+    toolbar->addWidget(exportButton);
+
+    auto *upper = new QSplitter(Qt::Horizontal, this);
+    upper->setHandleWidth(7);
+    auto *bin = new QWidget(upper);
+    auto *binLayout = new QVBoxLayout(bin);
+    binLayout->setContentsMargins(12, 8, 8, 6);
+    binLayout->setSpacing(8);
+    auto *binHeader = new QHBoxLayout;
+    binHeader->addWidget(panelHeading(tr("Media bin"), bin), 1);
+    binHeader->addWidget(actionButton(import, bin, tr("Import…")));
+    binLayout->addLayout(binHeader);
+    binLayout->addWidget(media_, 1);
+    auto *binControls = new QHBoxLayout;
+    binControls->addWidget(actionButton(append_, bin, tr("Add to timeline")));
+    binControls->addWidget(actionButton(relink_, bin, tr("Relink…")));
+    binControls->addStretch();
+    binLayout->addLayout(binControls);
+
+    auto *monitor = new QWidget(upper);
+    auto *monitorLayout = new QVBoxLayout(monitor);
+    monitorLayout->setContentsMargins(7, 8, 12, 6);
+    monitorLayout->setSpacing(6);
+    monitorLayout->addWidget(preview_, 1);
+    auto *transport = new QHBoxLayout;
+    auto *playButton = actionButton(play_, monitor);
+    playButton->setMinimumWidth(68);
+    transport->addWidget(playButton);
+    transport->addStretch();
+    transport->addWidget(clock_);
+    monitorLayout->addLayout(transport);
+    upper->addWidget(bin);
+    upper->addWidget(monitor);
+    upper->setSizes({250, 710});
+    upper->setStretchFactor(1, 1);
+    upper->setChildrenCollapsible(false);
+
+    auto *layout = new QSplitter(Qt::Vertical, this);
+    layout->setHandleWidth(7);
+    layout->setStyleSheet(QStringLiteral("QSplitter::handle { background: palette(window); }"));
+    auto *sequence = new QWidget(layout);
+    auto *sequenceLayout = new QVBoxLayout(sequence);
+    sequenceLayout->setContentsMargins(12, 6, 12, 5);
+    sequenceLayout->setSpacing(6);
+    auto *sequenceHeader = new QHBoxLayout;
+    sequenceHeader->addWidget(panelHeading(tr("Timeline"), sequence));
+    sequenceHeader->addWidget(clipInfo_, 1);
+    sequenceHeader->addWidget(actionButton(split_, sequence, tr("Split")));
+    sequenceHeader->addWidget(actionButton(undo_, sequence));
+    sequenceHeader->addWidget(actionButton(redo_, sequence));
+    sequenceHeader->addSpacing(8);
+    sequenceHeader->addWidget(actionButton(out, sequence, tr("−")));
+    sequenceHeader->addWidget(actionButton(fit, sequence, tr("Fit")));
+    sequenceHeader->addWidget(actionButton(in, sequence, tr("+")));
+    sequenceLayout->addLayout(sequenceHeader);
+    sequenceLayout->addWidget(timeline_, 1);
+    layout->insertWidget(0, upper);
+    layout->addWidget(sequence);
+    layout->setStretchFactor(0, 1);
+    layout->setChildrenCollapsible(false);
+    setCentralWidget(layout);
+
     progress_->setMaximumWidth(155);
     progress_->hide();
-    statusBar()->addPermanentWidget(clipInfo_);
     statusBar()->addPermanentWidget(progress_);
-    statusBar()->addPermanentWidget(clock_);
 
     connect(media_, &QListWidget::currentItemChanged, this, &Window::controls);
     connect(media_, &QListWidget::itemDoubleClicked, this, [this] { insert(selectedSource(), clipCount()); });
@@ -249,11 +409,11 @@ bool Window::openProject(const QString &path)
         selected_.reset();
         positionUs_ = 0;
         timeline_->fit();
-        refresh();
         QStringList paths;
         for (const auto &[id, source] : editor_.project().sources)
             paths.append(source);
         startIndex(std::move(paths), IndexIntent::Open);
+        refresh();
         return true;
     } catch (const std::exception &error) {
         report(errorText(error));
@@ -276,8 +436,14 @@ void Window::pickRelink()
     if (const auto id = selectedSource(); !id.isEmpty()) {
         const auto path = QFileDialog::getOpenFileName(this, tr("Locate source file"), {}, tr(mediaFilter));
         if (!path.isEmpty())
-            startIndex({spoolcut::resolveProjectSource({}, path)}, IndexIntent::Relink, id);
+            relinkSource(id, path);
     }
+}
+
+void Window::relinkSource(const QString &id, const QString &path)
+{
+    if (editor_.project().sources.contains(id))
+        startIndex({spoolcut::resolveProjectSource({}, path)}, IndexIntent::Relink, id);
 }
 
 void Window::startIndex(QStringList paths, IndexIntent intent, const QString &id)
@@ -451,8 +617,11 @@ void Window::refresh()
 {
     const auto sourceSelection = selectedSource();
     const QSignalBlocker block(media_);
-    media_->clear();
+    std::map<QString, QColor> clipColors;
+    int row = 0;
     for (const auto &[id, path] : editor_.project().sources) {
+        const auto color = sourceColor(static_cast<size_t>(row));
+        clipColors.emplace(id, color);
         const auto name = QFileInfo(path).fileName();
         const auto *result = editor_.indexResult(path);
         auto detail = tr("Awaiting inspection");
@@ -472,12 +641,27 @@ void Window::refresh()
                 tooltip += u"\n"_s + std::get<QString>(*result);
             }
         }
-        auto *item = new QListWidgetItem(tr("%1\n%2").arg(name, detail), media_);
+        while (const auto *previous = media_->item(row)) {
+            if (previous->data(Qt::UserRole).toString() >= id)
+                break;
+            delete media_->takeItem(row);
+        }
+        auto *item = media_->item(row);
+        if (!item || item->data(Qt::UserRole).toString() != id) {
+            item = new QListWidgetItem;
+            media_->insertItem(row, item);
+        }
+        item->setText(tr("%1\n%2").arg(name, detail));
         item->setToolTip(tooltip);
         item->setData(Qt::UserRole, id);
+        item->setData(mediaColorRole, color);
+        item->setData(mediaErrorRole, result && std::holds_alternative<QString>(*result));
         if (id == sourceSelection)
             media_->setCurrentItem(item);
+        ++row;
     }
+    while (media_->count() > row)
+        delete media_->takeItem(row);
     if (media_->currentRow() < 0 && media_->count() > 0)
         media_->setCurrentRow(0);
 
@@ -490,17 +674,59 @@ void Window::refresh()
     } catch (const std::exception &error) {
         statusBar()->showMessage(errorText(error));
     }
+    const bool timed = clipCount() == segments_.size();
     std::vector<PreviewClip> clips;
-    for (const auto &segment : segments_) {
-        std::vector<double> offsets;
-        offsets.reserve(segment.safePoints.size());
-        for (const auto time : segment.safePoints)
-            offsets.push_back(seconds(time - segment.startUs));
-        clips.push_back({QFileInfo(segment.path).fileName(), seconds(segment.endUs - segment.startUs), std::move(offsets)});
+    double knownDuration = 0;
+    size_t knownCount = 0;
+    bool checkingSources = false;
+    const auto &project = editor_.project();
+    for (size_t i = 0; i < project.clips.size(); ++i) {
+        const auto &clip = project.clips[i];
+        const auto source = project.sources.find(clip.source);
+        const auto name = source == project.sources.end() ? clip.source : QFileInfo(source->second).fileName();
+        const auto color = clipColors.contains(clip.source) ? clipColors.at(clip.source) : QColor{};
+        PreviewClip view{name, 0, {}, color};
+        if (timed) {
+            const auto &segment = segments_[i];
+            view.duration = seconds(segment.endUs - segment.startUs);
+            view.safeOffsets.reserve(segment.safePoints.size());
+            for (const auto time : segment.safePoints)
+                view.safeOffsets.push_back(seconds(time - segment.startUs));
+        } else {
+            try {
+                view.duration = seconds(editor_.index(clip.source).planClip(clip).durationUs);
+                knownDuration += view.duration;
+                ++knownCount;
+            } catch (const Error &) {
+                if (source == project.sources.end()) {
+                    view.unavailable = tr("Unknown source");
+                } else if (!QFileInfo::exists(source->second)) {
+                    view.unavailable = tr("Missing media");
+                } else if (!editor_.indexResult(source->second) && cancel_) {
+                    view.unavailable = tr("Checking media…");
+                    checkingSources = true;
+                } else {
+                    view.unavailable = tr("Unavailable media");
+                }
+            }
+        }
+        clips.push_back(std::move(view));
+    }
+    if (!timed) {
+        const auto placeholder = knownCount == 0 ? 1.0 : knownDuration / static_cast<double>(knownCount);
+        for (auto &clip : clips) {
+            if (!clip.unavailable.isEmpty())
+                clip.duration = placeholder;
+        }
     }
     if (selected_ && *selected_ >= clipCount())
         selected_.reset();
-    timeline_->setClips(std::move(clips));
+    QString timingProblem;
+    if (!timed) {
+        timingProblem = checkingSources ? tr("Checking media…")
+                                        : tr("Relink unavailable media to restore timeline timing");
+    }
+    timeline_->setClips(std::move(clips), timingProblem);
     timeline_->setSelected(selected_);
     if (!segments_.empty())
         seek(positionUs_, false);
@@ -530,6 +756,7 @@ void Window::controls()
     undo_->setEnabled(ready && editor_.canUndo());
     redo_->setEnabled(ready && editor_.canRedo());
     export_->setEnabled(ready && !segments_.empty());
+    cancelAction_->setVisible(!ready);
     cancelAction_->setEnabled(!ready && !cancel_->load(std::memory_order_relaxed));
     updateClock();
 
@@ -574,8 +801,19 @@ void Window::select(size_t row)
         return;
     selected_ = row;
     timeline_->setSelected(row);
-    if (row < segments_.size())
+    if (row < segments_.size()) {
         seek(segments_[row].startUs, false);
+    } else if (!timeline_->clips()[row].unavailable.isEmpty()) {
+        const auto &id = editor_.project().clips[row].source;
+        for (int i = 0; i < media_->count(); ++i) {
+            const auto *item = media_->item(i);
+            if (item->data(Qt::UserRole).toString() == id) {
+                media_->setCurrentRow(i);
+                break;
+            }
+        }
+        statusBar()->showMessage(tr("Select Relink to locate %1.").arg(timeline_->clips()[row].label));
+    }
     controls();
 }
 

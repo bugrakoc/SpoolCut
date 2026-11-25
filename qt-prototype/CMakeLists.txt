@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
-project(SpoolCutQtPrototype VERSION 0.1.0 LANGUAGES CXX)
+include(../cmake/SpoolCutVersion.cmake)
+project(SpoolCutQt VERSION "${SPOOLCUT_VERSION}" LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -38,10 +39,15 @@ qt_add_executable(spoolcut-qt WIN32 main.cpp)
 qt_add_resources(spoolcut-qt "spoolcut-icon"
     PREFIX "/" BASE "../assets" FILES "../assets/io.github.bugrakoc.SpoolCut.png")
 spoolcut_target(spoolcut-qt)
+target_compile_definitions(spoolcut-qt PRIVATE SPOOLCUT_VERSION="${SPOOLCUT_VERSION}")
 target_link_libraries(spoolcut-qt PRIVATE prototype-widgets)
 if(WIN32)
     enable_language(RC)
     target_sources(spoolcut-qt PRIVATE spoolcut.rc)
+    target_compile_definitions(spoolcut-qt PRIVATE
+        SPOOLCUT_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
+        SPOOLCUT_VERSION_MINOR=${PROJECT_VERSION_MINOR}
+        SPOOLCUT_VERSION_PATCH=${PROJECT_VERSION_PATCH})
     target_include_directories(spoolcut-qt PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 endif()
 

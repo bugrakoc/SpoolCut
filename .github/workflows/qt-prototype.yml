@@ -3,7 +3,7 @@ name: Qt desktop parity and packages
 on:
   push:
     branches: [cpp-qt]
-    paths: ["qt-prototype/**", "cpp/**", "packaging/windows/package.py", ".github/workflows/qt-prototype.yml"]
+    paths: ["VERSION", "cmake/**", "qt-prototype/**", "cpp/**", "packaging/windows/package.py", ".github/workflows/qt-prototype.yml"]
   workflow_dispatch:
 
 permissions:
@@ -168,7 +168,7 @@ jobs:
               sleep 0.1
             done
             test -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
-            bash qt-prototype/tests/smoke-appimage.sh dist-qt-linux/SpoolCut-Qt-Fedora-x86_64.AppImage
+            bash qt-prototype/tests/smoke-appimage.sh dist-qt-linux/SpoolCut-"$(cat VERSION)"-Qt-Fedora-x86_64.AppImage
           '
       - uses: actions/upload-artifact@v4
         with:

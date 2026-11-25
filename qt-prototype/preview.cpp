@@ -311,7 +311,7 @@ protected:
         int block = 0;
         mpv_render_param args[] = {
             {MPV_RENDER_PARAM_SW_SIZE, dimensions},
-            {MPV_RENDER_PARAM_SW_FORMAT, const_cast<char *>("bgr0")},
+            {MPV_RENDER_PARAM_SW_FORMAT, const_cast<char *>("rgb0")},
             {MPV_RENDER_PARAM_SW_STRIDE, &stride},
             {MPV_RENDER_PARAM_SW_POINTER, aligned},
             {MPV_RENDER_PARAM_BLOCK_FOR_TARGET_TIME, &block}, {}
@@ -321,9 +321,13 @@ protected:
             emit surface_.rendererFailed(mpvError(result));
             return;
         }
-        // bgr0 leaves the last byte undefined. Use an opaque RGB image view.
-        QImage image(static_cast<uchar *>(aligned), size.width(), size.height(), static_cast<qsizetype>(stride),
-                     QImage::Format_RGB32);
+        // libmpv leaves the fourth byte undefined. Initialize alpha before
+        // handing the frame to Qt's software compositor.
+        auto *frame = static_cast<uchar *>(aligned);
+        for (size_t alpha = 3; alpha < length; alpha += 4)
+            frame[alpha] = 255;
+        const QImage image(frame, size.width(), size.height(), static_cast<qsizetype>(stride),
+                           QImage::Format_RGBX8888);
         painter.drawImage(rect(), image);
         if (surface_.hasLoadedFrame())
             emit surface_.frameDrawn();

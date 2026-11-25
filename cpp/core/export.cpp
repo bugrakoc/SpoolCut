@@ -17,6 +17,7 @@ namespace {
 using namespace detail;
 
 constexpr TimeBase mkvTimeBase{1, 1000};
+constexpr auto stagingVideoTimescale = 1'000'000;
 
 const QStringList ffmpegOptions{u"-nostdin"_s, u"-hide_banner"_s, u"-loglevel"_s, u"warning"_s,
                                u"-xerror"_s, u"-n"_s};
@@ -45,7 +46,7 @@ void writeClip(const Media &media, const PlannedClip &clip, const QString &outpu
     // Fragmentation preserves AAC timing without source priming or inferred
     // padding. A shared video timescale allows concat across source time bases.
     args << u"-movflags"_s << u"+frag_keyframe+delay_moov+default_base_moof"_s << u"-use_editlist"_s << u"1"_s
-         << u"-movie_timescale"_s << u"1000000"_s << u"-video_track_timescale"_s << u"1000000"_s;
+         << u"-movie_timescale"_s << u"1000000"_s << u"-video_track_timescale"_s << QString::number(stagingVideoTimescale);
     copyOutput(args, u"mp4"_s, output);
     runTool(u"ffmpeg"_s, args, cancel);
 }
@@ -106,7 +107,7 @@ void verifyPackets(const std::vector<Packet> &source, PacketRange range, TimeBas
     }
 }
 
-void verifyStreams(const QString &path, const Prepared &prepared, const Cancel &cancel)
+QString verifyStreams(const QString &path, const Prepared &prepared, const Cancel &cancel)
 {
     const auto info = probe(path, u"matroska"_s, {u"-show_format"_s, u"-show_streams"_s, u"-show_data"_s},
                             u"format=duration:stream=codec_type,codec_name,extradata:stream_disposition=default"_s, cancel);
@@ -141,11 +142,12 @@ void verifyStreams(const QString &path, const Prepared &prepared, const Cancel &
     require(secondsOk && fractionOk && seconds >= 0, u"invalid output duration"_s);
     const auto actual = Wide{seconds} * 1'000'000 + fraction;
     const auto difference = actual - prepared.plan.durationUs;
-    require(difference >= -2000 && difference <= 2000,
-            u"output duration is %1 s, expected %2 µs"_s.arg(duration).arg(prepared.plan.durationUs));
+    if (difference < -2000 || difference > 2000)
+        return u"output duration is %1 s, expected %2 µs"_s.arg(duration).arg(prepared.plan.durationUs);
+    return {};
 }
 
-void verify(const QString &path, const Prepared &prepared, const Cancel &cancel)
+QString verify(const QString &path, const Prepared &prepared, const Cancel &cancel)
 {
     const auto packets = readPackets(path, u"matroska"_s, cancel);
     std::array<std::vector<const Packet *>, 2> streams;
@@ -170,7 +172,30 @@ void verify(const QString &path, const Prepared &prepared, const Cancel &cancel)
     }
     require(videoOffset == streams[0].size() && audioOffset == streams[1].size(),
             u"unexpected extra output packets"_s);
-    verifyStreams(path, prepared, cancel);
+    return verifyStreams(path, prepared, cancel);
+}
+
+QString finalVideoDuration(const Prepared &prepared)
+{
+    const auto &clips = prepared.plan.clips;
+    const auto &lastClip = clips.back();
+    const auto &packets = prepared.sources.at(lastClip.clip.source).videoPackets;
+    const auto begin = packets.begin() + lastClip.videoPackets.start;
+    const auto end = packets.begin() + lastClip.videoPackets.end;
+    const auto lastFrame = std::max_element(begin, end, [](const Packet &left, const Packet &right) {
+        return left.pts < right.pts;
+    });
+    Wide lastOrdinal = lastFrame - begin;
+    for (auto clip = clips.begin(); clip != std::prev(clips.end()); ++clip)
+        lastOrdinal += clip->videoPackets.end - clip->videoPackets.start;
+
+    // Fragmented MOV probing can infer a nominal duration for the tail.
+    // The planner knows the last presented frame and the exclusive end.
+    // Keep the staged microsecond PTS/DTS and payloads. Correct the final
+    // frame's duration and cap any inferred video duration at the same end.
+    return u"setts=pts=PTS:dts=DTS:duration='if(eq(N,%1),max(0,%2-PTS),min(DURATION,max(0,%2-PTS)))'"_s
+        .arg(checkedTicks(lastOrdinal, u"video packet ordinal overflows"_s))
+        .arg(prepared.plan.durationUs);
 }
 
 void appendClip(QFile &manifest, const QString &name, const QString &path, qint64 durationUs)
@@ -234,7 +259,6 @@ void exportProject(const Project &project, const QString &root, const QString &o
     require(flushed, manifest.errorString());
     manifest.close();
 
-    notify({ExportStage::Joining});
     const auto staged = QDir(directory).filePath(u"output.mkv"_s);
     auto args = ffmpegOptions;
     args << u"-protocol_whitelist"_s << u"file"_s << u"-f"_s << u"concat"_s << u"-safe"_s;
@@ -247,10 +271,26 @@ void exportProject(const Project &project, const QString &root, const QString &o
 #endif
     args << u"-map"_s << u"0:v:0"_s << u"-map"_s << u"0:a:0"_s
          << u"-disposition:v:0"_s << u"default"_s << u"-disposition:a:0"_s << u"default"_s;
-    copyOutput(args, u"matroska"_s, staged);
-    context(u"joining copied clips"_s, [&] { runTool(u"ffmpeg"_s, args, cancel, false, workingDirectory); });
-    notify({ExportStage::Verifying});
-    context(u"verifying joined output"_s, [&] { verify(staged, prepared, cancel); });
+    const auto joinAndVerify = [&](QStringList options) {
+        copyOutput(options, u"matroska"_s, staged);
+        notify({ExportStage::Joining});
+        context(u"joining copied clips"_s, [&] { runTool(u"ffmpeg"_s, options, cancel, false, workingDirectory); });
+        notify({ExportStage::Verifying});
+        return context(u"verifying joined output"_s, [&] { return verify(staged, prepared, cancel); });
+    };
+
+    if (const auto durationError = joinAndVerify(args); !durationError.isEmpty()) {
+        checkCancelled(cancel);
+        QFile previous(staged);
+        require(previous.remove(), u"replacing the staged output: %1"_s.arg(previous.errorString()));
+        // Packet and stream verification succeeded. Reuse the copied clips
+        // and correct the duration at muxing, then verify the new file in full.
+        args << u"-bsf:v"_s << finalVideoDuration(prepared);
+        const auto correctedDurationError = joinAndVerify(std::move(args));
+        context(u"verifying joined output"_s, [&] {
+            require(correctedDurationError.isEmpty(), correctedDurationError);
+        });
+    }
     for (const auto &[id, source] : prepared.sources)
         source.checkSource();
     checkCancelled(cancel);

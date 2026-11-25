@@ -180,6 +180,39 @@ def sequence(case, root, clis, core_tests):
     assert all(summary == summaries[0] for summary in summaries), "differential export mismatch"
 
 
+def short_tail(root, clis):
+    # A 25 fps stream ends with a 30 ms sample instead of a 40 ms sample.
+    # The fragmented MOV probe can infer 40 ms for it again during joining.
+    original = root / "nominal.mp4"
+    shortened = root / "short tail.mp4"
+    run(
+        "ffmpeg", "-nostdin", "-v", "error",
+        "-f", "lavfi", "-i", "testsrc2=size=96x64:rate=25:duration=2",
+        "-f", "lavfi", "-i", "sine=sample_rate=48000:duration=2",
+        "-c:v", "libx264", "-threads:v", "1",
+        "-x264-params", "bframes=0:keyint=16:min-keyint=16:scenecut=0",
+        "-c:a", "aac", "-video_track_timescale", "10000", original,
+    )
+    run(
+        "ffmpeg", "-nostdin", "-v", "error", "-i", original, "-map", "0", "-c", "copy",
+        "-bsf:v", "setts=duration='if(eq(N,49),300,DURATION)'",
+        "-video_track_timescale", "10000", shortened,
+    )
+    info = unanimous(clis, "inspect", shortened)
+    assert info["video_end_pts"] == 19900, info
+    project = root / "short tail.json"
+    save_project(project, {"a": shortened.name}, [clip("a", info["safe_in_pts"][0], info["video_end_pts"])])
+    plan = unanimous(clis, "plan", project)
+    assert plan["duration_us"] == 1990000
+    output = root / "short tail.mkv"
+    # The Rust export is kept as a reference for the previous accepted fixtures.
+    run(clis[0], "export", project, output)
+    verify_output(output, plan, {"a": [packets(shortened, stream) for stream in ("v:0", "a:0")]},
+                  frames(shortened), aligned=False)
+    tail = probe(output, "-select_streams", "v:0", "-show_packets", "-show_entries", "packet=pts,duration")
+    assert tail["packets"][-1] == {"pts": 1960, "duration": 30}, tail["packets"][-1]
+
+
 def rejected(root, clis):
     source = root / "open gop.mp4"
     other = root / "different codec.mp4"
@@ -306,7 +339,7 @@ def interrupt(root, clis):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("case", choices=("avc", "hevc", "main10", "vfr", "rejected", "interrupt"))
+    parser.add_argument("case", choices=("avc", "hevc", "main10", "vfr", "short-tail", "rejected", "interrupt"))
     parser.add_argument("--cli", type=Path, required=True)
     parser.add_argument("--core-tests", type=Path, required=True)
     parser.add_argument("--reference", type=Path)
@@ -318,7 +351,9 @@ def main():
         root = Path(tmp)
         if args.case == "interrupt":
             return interrupt(root, clis)
-        if args.case == "rejected":
+        if args.case == "short-tail":
+            short_tail(root, clis)
+        elif args.case == "rejected":
             rejected(root, clis)
         else:
             sequence(args.case, root, clis, args.core_tests.resolve())

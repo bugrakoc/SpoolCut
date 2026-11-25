@@ -31,6 +31,7 @@ void onInterrupt(int)
 #endif
 
 constexpr auto usage = "SpoolCut stream-copy editor\n"
+                       "  spoolcut --version\n"
                        "  spoolcut inspect SOURCE\n"
                        "  spoolcut plan PROJECT.json\n"
                        "  spoolcut export PROJECT.json OUTPUT.mkv";
@@ -56,7 +57,9 @@ int main(int argc, char **argv)
             throw spoolcut::Error(QStringLiteral("installing Ctrl+C handler"));
 
         const auto args = app.arguments().mid(1);
-        if (args.size() == 2 && args[0] == QStringLiteral("inspect")) {
+        if (args == QStringList{QStringLiteral("--version")}) {
+            std::puts("SpoolCut " SPOOLCUT_VERSION);
+        } else if (args.size() == 2 && args[0] == QStringLiteral("inspect")) {
             printJson(spoolcut::inspect(args[1], cancelled).json());
         } else if ((args.size() == 2 && args[0] == QStringLiteral("plan")) ||
                    (args.size() == 3 && args[0] == QStringLiteral("export"))) {

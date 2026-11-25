@@ -56,6 +56,11 @@ private slots:
         QCOMPARE(timeline.xAt(2), 212);
         QCOMPARE(timeline.xAt(2) - timeline.xAt(1), 200);
         timeline.fit();
+        timeline.zoom(0.5);
+        QCOMPARE(timeline.xAt(8) - timeline.xAt(0), 400);
+        QVERIFY(timeline.xAt(8) < timeline.width() * 0.60);
+        timeline.fit();
+        QCOMPARE(timeline.xAt(8), 812);
         QSignalSpy scrub(&timeline, &Timeline::scrubbed);
         QTest::mouseClick(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(412, 24));
         QCOMPARE(scrub.size(), 1);
@@ -157,26 +162,39 @@ private slots:
         QCOMPARE(failures.size(), 1);
         QVERIFY(failures.takeFirst()[0].toString().contains("cancelled"));
 
-        auto missing = portable;
-        missing.sources.at("source-2") = "missing.mov";
-        const auto missingPath = directory.filePath("missing.spoolcut.json");
-        missing.save(missingPath);
-        QVERIFY(window.openProject(missingPath));
+        const auto movedPath = directory.filePath("moved ü clip.mp4");
+        QVERIFY(QFile::rename(b, movedPath));
+        QVERIFY(window.openProject(path));
         QTRY_COMPARE_WITH_TIMEOUT(idle.size(), 6, 15000);
         QCOMPARE(window.clipCount(), size_t{3});
         QCOMPARE(window.sourceCount(), size_t{2});
         QCOMPARE(failures.size(), 1);
         auto *bin = window.findChild<QListWidget *>();
         QVERIFY(bin);
-        QVERIFY(bin->item(1)->text().contains("Missing file"));
-        window.close();
+        auto *missingRow = bin->item(1);
+        QVERIFY(missingRow->text().contains("Missing file"));
+        auto *timeline = window.timeline();
+        QCOMPARE(timeline->clips().size(), size_t{3});
+        QVERIFY(!timeline->hasTiming());
+        QVERIFY(timeline->clips()[0].unavailable.isEmpty());
+        QVERIFY(timeline->clips()[1].unavailable.isEmpty());
+        QCOMPARE(timeline->clips()[2].unavailable, QString("Missing media"));
+        QVERIFY(timeline->clips()[0].color != timeline->clips()[2].color);
 
-        spoolcut::Editor relinked;
-        relinked.open(missingPath);
-        relinked.setIndex(a, spoolcut::IndexedSource::open(a, cancel));
-        relinked.relink("source-2", b, spoolcut::IndexedSource::open(b, cancel));
-        QCOMPARE(relinked.segments().size(), size_t{3});
-        QVERIFY(relinked.dirty());
+        const auto missingX = timeline->xAt(timeline->duration() - timeline->clips().back().duration / 2);
+        QTest::mouseClick(timeline, Qt::LeftButton, Qt::NoModifier, QPoint(qRound(missingX), 66));
+        QCOMPARE(bin->currentItem(), missingRow);
+        window.relinkSource("source-2", movedPath);
+        QTRY_COMPARE_WITH_TIMEOUT(idle.size(), 7, 15000);
+        QCOMPARE(bin->currentItem(), missingRow);
+        QVERIFY(timeline->hasTiming());
+        QCOMPARE(timeline->clips().size(), size_t{3});
+        QVERIFY(timeline->clips().back().unavailable.isEmpty());
+        QVERIFY(window.saveProject(path));
+        const auto relinked = Project::load(path);
+        QVERIFY(relinked.clips == portable.clips);
+        QCOMPARE(relinked.sources.at("source-2"), QFileInfo(movedPath).fileName());
+        window.close();
     }
 
 #ifdef Q_OS_LINUX
@@ -280,6 +298,12 @@ private slots:
             QVERIFY(QTest::qWaitFor(redShown, 3000));
             window.togglePlayback();
             QTRY_VERIFY_WITH_TIMEOUT(window.preview()->position() > 0.20, 5000);
+            if (renderer == "Software") {
+                for (const auto sample : {0.65, 1.35, 2.25}) {
+                    QTRY_VERIFY_WITH_TIMEOUT(window.preview()->position() >= sample, 5000);
+                    QVERIFY(redShown());
+                }
+            }
 
             window.scrub(3.6);
             QTest::qWait(120);

@@ -16,6 +16,7 @@ HOST = re.compile(r"^(?:ld-linux[^/]*|lib(?:c|m|dl|rt|pthread|resolv|util|nss_\w
                   r"GL[^.]*|EGL[^.]*|OpenGL|gbm|drm[^.]*|vulkan|wayland-[^.]+))\.so")
 LIB = Path("/usr/lib/x86_64-linux-gnu")
 QT_PLUGINS = LIB / "qt6/plugins"
+VERSION = Path("VERSION").read_text(encoding="ascii").strip()
 
 
 def output(*args):
@@ -124,7 +125,7 @@ def main():
     dist.mkdir(parents=True, exist_ok=True)
     app = dist / "SpoolCutQt.AppDir"
     app.mkdir()
-    sources = dist / "SpoolCut-Qt-Linux-sources"
+    sources = dist / f"SpoolCut-{VERSION}-Qt-Linux-sources"
     sources.mkdir()
 
     runtime = dist / "runtime-x86_64"
@@ -145,7 +146,7 @@ def main():
 
     fs = dist / "app.squashfs"
     run("mksquashfs", app, fs, "-comp", "zstd", "-noappend", "-processors", "2", "-root-owned")
-    image = dist / "SpoolCut-Qt-Fedora-x86_64.AppImage"
+    image = dist / f"SpoolCut-{VERSION}-Qt-Fedora-x86_64.AppImage"
     with image.open("wb") as stream:
         for part in (runtime, fs):
             with part.open("rb") as reader:

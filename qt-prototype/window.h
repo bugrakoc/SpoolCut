@@ -20,6 +20,7 @@ public:
     void importFiles(const QStringList &paths, bool append = false);
     bool openProject(const QString &path);
     bool saveProject(const QString &path);
+    void relinkSource(const QString &id, const QString &path);
     void startExport(const QString &path);
     void cancelJob();
     void scrub(double seconds);

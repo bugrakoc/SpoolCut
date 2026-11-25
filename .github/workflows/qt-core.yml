@@ -3,7 +3,7 @@ name: Qt core parity
 on:
   push:
     branches: [cpp-qt]
-    paths: ["CMakeLists.txt", "cpp/**", ".github/workflows/qt-core.yml"]
+    paths: ["VERSION", "cmake/**", "CMakeLists.txt", "cpp/**", ".github/workflows/qt-core.yml"]
   workflow_dispatch:
 
 permissions:

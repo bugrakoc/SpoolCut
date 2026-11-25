@@ -59,17 +59,15 @@ def click(window_id, x, y):
 
 
 def ruler_y(window, height, qt):
-    if qt:
-        return height - 118
-    start = height - 265
-    data = window.get_image(140, start, 1, 200, X.ZPixmap, 0xffffffff).data
-    natural = [(242, 237, 232), (51, 41, 36)]
-    for row in range(194):
+    start = height - 275
+    data = window.get_image(140, start, 1, 225, X.ZPixmap, 0xffffffff).data
+    natural = [(241, 234, 228), (56, 44, 36)] if qt else [(242, 237, 232), (51, 41, 36)]
+    for row in range(219):
         pixels = [data[(row + i) * 4:(row + i) * 4 + 3] for i in range(6)]
         if any(all(all(abs(left - right) <= 2 for left, right in zip(pixel, target))
                    for pixel in pixels) for target in natural):
             return start + row + 4
-    raise RuntimeError("GTK time ruler was not found")
+    raise RuntimeError("Qt time ruler was not found" if qt else "GTK time ruler was not found")
 
 
 def compare(xserver, executable, inputs, qt, env):

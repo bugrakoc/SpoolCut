@@ -16,10 +16,13 @@ from package import (
 )
 
 
+VERSION = Path("VERSION").read_text(encoding="ascii").strip()
+
+
 def package(prefix, executable, output, scratch):
     bundle = scratch / "SpoolCut Qt"
     bin_dir = bundle / "bin"
-    sources = scratch / "SpoolCut-Qt-Windows-sources"
+    sources = scratch / f"SpoolCut-{VERSION}-Qt-Windows-sources"
     native_sources = sources / "MSYS2"
     native_sources.mkdir(parents=True)
 
@@ -69,10 +72,10 @@ def package(prefix, executable, output, scratch):
     shutil.copy2("qt-prototype/README.md", bundle / "Read me.md")
     revision = run("git", "rev-parse", "HEAD", capture=True).decode()
     (bundle / "source-revision.txt").write_text(revision, encoding="utf-8")
-    source_archive = output / "SpoolCut-Qt-Windows-sources.tar.zst"
+    source_archive = output / (sources.name + ".tar.zst")
     run(str(msys / "usr/bin/tar.exe"), "--force-local", "--zstd", "-cf",
         source_archive.as_posix(), "-C", scratch.as_posix(), sources.name)
-    zip_path = output / "SpoolCut-Qt-Windows-x86_64.zip"
+    zip_path = output / f"SpoolCut-{VERSION}-Qt-Windows-x86_64.zip"
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
         for path in sorted(bundle.rglob("*")):
             if path.is_file():

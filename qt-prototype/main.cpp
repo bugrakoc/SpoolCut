@@ -13,11 +13,13 @@ int main(int argc, char **argv) {
     QApplication app(argc, argv);
     std::setlocale(LC_NUMERIC, "C");
     app.setApplicationName("SpoolCut");
+    app.setApplicationVersion(QStringLiteral(SPOOLCUT_VERSION));
     app.setDesktopFileName(QLatin1String(spoolCutDesktopId));
     app.setWindowIcon(QIcon(":/io.github.bugrakoc.SpoolCut.png"));
 
     QCommandLineParser parser;
     parser.addHelpOption();
+    parser.addVersionOption();
     parser.addPositionalArgument("files", "MP4 or MOV files to preview", "[files…]");
     const QCommandLineOption smoke("smoke", "Exit successfully after drawing a frame with audio.");
     parser.addOption(smoke);

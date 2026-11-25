@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 image=$(realpath "$1")
+version=$(cat VERSION)
 workspace=$(mktemp -d)
 trap 'rm -rf "$workspace"' EXIT
 cd "$workspace"
@@ -14,6 +15,7 @@ export XDG_DATA_HOME="$workspace/desktop-data"
 export XDG_CURRENT_DESKTOP=KDE
 test -f "$bundle/plugins/platformthemes/libqxdgdesktopportal.so"
 unset QT_QPA_PLATFORMTHEME
+env PATH=/usr/bin:/bin "$bundle/AppRun" --cli --version | grep -Fx "SpoolCut $version"
 for video in avc hevc; do
     encoding=(-c:v libx264)
     if [[ $video == hevc ]]; then

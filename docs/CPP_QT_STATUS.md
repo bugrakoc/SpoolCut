@@ -444,3 +444,30 @@ A future package must choose an executable/resource layout for a signed
 `.app`, bundle the platform and other required Qt plugins, and verify the
 preview context and fallback on supported hardware. Signing, notarization,
 and dependency/source inventory belong to that package workflow.
+
+## Maintainer results and Qt 0.2.1 follow-up
+
+| Version | Revision and purpose |
+| --- | --- |
+| 0.1.0 | Rust/GTK baseline at [`39cb4ee`](https://github.com/bugrakoc/SpoolCut/tree/39cb4eecef8914f187871aac2187f8f023d14e0d). |
+| 0.2.0 | First Qt maintainer build at [`d1c896c`](https://github.com/bugrakoc/SpoolCut/commit/d1c896c5faac919a01f171c243c644bb500626df), [test packages](https://github.com/bugrakoc/SpoolCut/actions/runs/45632588206). This assignment records the build already tested. |
+| 0.2.1 | First versioned Qt follow-up. [VERSION](../VERSION) drives both executables and package filenames. |
+
+The maintainer confirmed the KDE picker, taskbar icon and window controls, and
+reported the NVIDIA RTX 4070 OpenGL renderer. Windows 11 in QEMU passed the
+desktop integration and software Main 10 playback checks. The reported scaling
+checks passed at 100%, 150%, and 200%. Accelerated Windows OpenGL, a second drive,
+locked projects on the target VM, and removable/exFAT remain open for manual
+testing.
+
+| 0.2.0 finding | 0.2.1 change |
+| --- | --- |
+| Reopening a project after moving a source hid the timeline. | The timeline keeps its clips visible, marks the unavailable rows, and preserves the selection during relink. It suppresses absolute time and playback until all clip timings can be resolved. |
+| Export rejected 46.795 s for a 46.785 s plan. | A generated clip reproduced the 10 ms excess. When only duration verification fails, the join retries with the planned final video endpoint and again verifies all packets, streams, and duration before publication. The export stays stream-copy. |
+| Fedora software preview faded to white. | The software renderer now initializes every pixel's padding/alpha byte before giving the RGB image to Qt. Playback checks sample colors over time. Retest on Fedora with the original footage. |
+| Qt UI lost the GTK timeline and media-bin visual cues. | The editor uses per-source colors, a distinct ruler and playhead, a two-line media bin, and grouped controls. Zooming out past Fit now leaves usable empty timeline space. |
+
+The key retests are the original export and Windows player, the Fedora software
+preview, and reopening the project with a moved source. See the
+[maintainer checklist](#maintainer-checklist) for hardware and filesystem
+acceptance.

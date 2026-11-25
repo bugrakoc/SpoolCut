@@ -10,6 +10,10 @@ Cut and join video without re-encoding. The `cpp-qt` branch builds a C++20/Qt 6 
 
 The Rust/GTK editor and CLI remain available on this branch for parity testing. The Rust reference is pinned at [`39cb4ee`](https://github.com/bugrakoc/SpoolCut/tree/39cb4eecef8914f187871aac2187f8f023d14e0d). The commands below build that implementation. See the [Rust Windows build guide](docs/WINDOWS.md) for its portable package.
 
+The Rust/GTK baseline is version 0.1.0. The first Qt maintainer build is
+0.2.0. Qt builds read their version from [VERSION](VERSION). See **Help →
+About SpoolCut** in the editor or run `spoolcut --version`.
+
 ## Desktop editor
 
 The AppImage adds a SpoolCut launcher to your application menu on first run so desktop panels can find its icon. If you move the AppImage, run it from the new location to update its launcher.

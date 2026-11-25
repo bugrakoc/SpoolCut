@@ -5,6 +5,9 @@ as the CLI. It loads existing SpoolCut projects, imports and indexes local
 MP4/MOV sources, and exports compatible edits to Matroska using stream copy.
 The Rust reference remains available at `39cb4ee`.
 
+The version appears in **Help → About SpoolCut**, the CLI's `--version`,
+and the AppImage and ZIP filenames.
+
 ## Build
 
 Use Qt 6.8 or newer, libmpv with API 2.3 or newer, GCC or Clang with C++20,
@@ -32,13 +35,14 @@ any fallback reason. Both renderers use CPU video decoding.
 
 - Use **Import media** or drop MP4/MOV files onto the window. Double-click a
   bin item to append it or drag it to a position on the timeline.
-- Click the ruler to snap to a safe keyframe. Drag the ruler to scrub.
+- Click the ruler to snap to a safe keyframe. Drag the ruler to scrub. Zoom out past Fit to see future space on the timeline.
   Drag a clip to reorder it or drag an edge to trim. Press **S** to split
   near the playhead at a safe point. **Space** toggles playback, and the
   left and right arrows jump to safe keyframes.
 - Use **Open project** and **Save project** with the existing SpoolCut JSON
   files. Select an unavailable source and choose **Relink source** to locate
-  a replacement. The editor validates existing cuts before changing paths.
+  a replacement. The affected clips stay visible on the timeline. Relinking
+  validates existing cuts and restores timeline timing.
 - Use **Export Matroska** to write a new MKV. SpoolCut rejects incompatible
   streams and existing destinations. Use **Cancel operation** during indexing
   or export.
@@ -74,12 +78,14 @@ matching source archive available alongside the binary if redistributing.
 
 ## Fedora AppImage
 
-Make `SpoolCut-Qt-Fedora-x86_64.AppImage` executable, then open it on Fedora
-44 or newer. The AppImage is built with Debian 13's Qt and codec-enabled
-multimedia libraries and uses the Fedora host's graphics drivers. On launch it
-installs a per-user desktop entry for the prototype's own app ID. On KDE it
-requests the file picker through the session's XDG Desktop Portal. If user-mode
-FUSE is unavailable, run `./SpoolCut-Qt-Fedora-x86_64.AppImage --appimage-extract-and-run`.
-Use `./SpoolCut-Qt-Fedora-x86_64.AppImage --cli --help` to run the bundled
-CLI. Keep the matching Linux source archive available if redistributing the
-AppImage.
+Make the versioned AppImage executable, then open it on Fedora 44 or newer.
+The AppImage uses the host graphics drivers and installs a per-user launcher
+for the Qt build. On KDE it requests native file dialogs through the XDG
+Desktop Portal. For a 0.2.1 image, the fallback invocation is
+
+```sh
+./SpoolCut-0.2.1-Qt-Fedora-x86_64.AppImage --appimage-extract-and-run
+./SpoolCut-0.2.1-Qt-Fedora-x86_64.AppImage --cli --version
+```
+
+Keep the matching Linux source archive available if redistributing the AppImage.

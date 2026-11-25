@@ -1,6 +1,6 @@
 # SpoolCut — C++ / Qt 6 migration roadmap
 
-Status. The maintainer approved the migration after the Fedora KDE Wayland and Windows 11 prototype retests. Milestones C and D passed hosted verification on Linux and Windows. The Milestone E test packages passed their relocated smoke tests and are ready for maintainer retesting. See [migration evidence](docs/CPP_QT_STATUS.md) for build instructions, results and open checks.
+Status. Milestones C and D passed hosted verification. The maintainer tested Qt 0.2.0 on Fedora KDE and Windows 11 and found issues in duration verification, missing-media display, and Fedora software preview. The 0.2.1 follow-up addresses those reports and restores timeline and media-bin styling from the GTK editor. See [migration evidence](docs/CPP_QT_STATUS.md) for retest results and open checks.
 
 ## 1. Decision and scope
 
@@ -8,7 +8,7 @@ SpoolCut is a lightweight GPLv3-licensed desktop and CLI editor for lossless vid
 
 Qt Widgets is selected for conventional desktop controls, C++-only UI code, custom timeline painting, and mature platform integration and deployment tooling. Do not introduce QML/Qt Quick, a web UI, a second application language, a persistent Rust/C++ bridge or a new multimedia engine. Qt's advantages are hypotheses until tested. Rust's memory-safety advantages are real and must be compensated for with disciplined C++ ownership and testing.
 
-Non-goals: new editing features, new codecs or containers, smart rendering, transcoding, visual redesign, changing project format or weakening export validation. Keep MKV as the existing export target during parity work; MP4/MOV export is a separate future decision. Preview may decode for display; export must never re-encode or silently convert media.
+Non-goals: new editing features, new codecs or containers, smart rendering, transcoding, changing project format or weakening export validation. Keep MKV as the existing export target during parity work; MP4/MOV export is a separate future decision. Preview may decode for display; export must never re-encode or silently convert media.
 
 ## 2. Baseline and branch policy
 

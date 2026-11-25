@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 cmake_minimum_required(VERSION 3.25)
-project(SpoolCut VERSION 0.1.0 LANGUAGES CXX)
+include(cmake/SpoolCutVersion.cmake)
+project(SpoolCut VERSION "${SPOOLCUT_VERSION}" LANGUAGES CXX)
 
 include(CTest)
 find_package(Qt6 6.8 REQUIRED COMPONENTS Core)
@@ -17,7 +18,7 @@ if(BUILD_TESTING)
     spoolcut_target(spoolcut-core-tests)
     add_test(NAME core-unit COMMAND spoolcut-core-tests)
 
-    foreach(case avc hevc main10 vfr rejected interrupt)
+    foreach(case avc hevc main10 vfr short-tail rejected interrupt)
         set(reference_args)
         if(SPOOLCUT_RUST_REFERENCE)
             set(reference_args --reference "${SPOOLCUT_RUST_REFERENCE}")

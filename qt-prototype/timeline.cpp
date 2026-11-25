@@ -4,36 +4,50 @@
 #include <QApplication>
 #include <QMimeData>
 #include <QMouseEvent>
+#include <QFontDatabase>
 #include <QPainter>
 #include <QPalette>
 #include <QWheelEvent>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 
 namespace {
 constexpr double margin = 12;
-constexpr int trackY = 42;
+constexpr int rulerHeight = 36;
+constexpr int trackY = 46;
+constexpr int clipHeight = 55;
 constexpr auto sourceType = "application/x-spoolcut-source";
 
 QString timeLabel(double seconds, int decimals)
 {
-    const auto minutes = static_cast<qint64>(seconds / 60);
-    return QStringLiteral("%1:%2").arg(minutes).arg(seconds - static_cast<double>(minutes) * 60,
+    const auto factor = std::pow(10.0, decimals);
+    const auto rounded = std::round(seconds * factor) / factor;
+    const auto minutes = static_cast<qint64>(rounded / 60);
+    return QStringLiteral("%1:%2").arg(minutes).arg(rounded - static_cast<double>(minutes) * 60,
                                                      decimals ? 3 + decimals : 2, 'f', decimals, '0');
 }
+}
+
+QColor sourceColor(size_t row)
+{
+    static constexpr std::array<QRgb, 6> colors{0x2c5d85, 0x256454, 0x634986, 0x805b30, 0x3a6171, 0x814a63};
+    return QColor::fromRgb(colors[row % colors.size()]);
 }
 
 Timeline::Timeline(QWidget *parent) : QWidget(parent)
 {
     setMinimumHeight(112);
     setAccessibleName(tr("Timeline"));
+    setToolTip(tr("Click to snap to a safe frame. Drag the ruler to scrub. Scroll to pan, or Ctrl+scroll to zoom."));
     setMouseTracking(true);
     setAcceptDrops(true);
 }
 
-void Timeline::setClips(std::vector<PreviewClip> clips)
+void Timeline::setClips(std::vector<PreviewClip> clips, const QString &timingProblem)
 {
+    timingProblem_ = timingProblem;
     clips_ = std::move(clips);
     duration_ = 0;
     starts_.clear();
@@ -59,7 +73,7 @@ void Timeline::setSelected(std::optional<size_t> row)
 void Timeline::setPosition(double seconds, bool follow)
 {
     position_ = std::clamp(seconds, 0.0, duration_);
-    if (follow) {
+    if (follow && hasTiming()) {
         const auto visible = (width() - 2 * margin) / scale();
         if (position_ < offset_ || position_ > offset_ + visible)
             offset_ = position_ - 0.15 * visible;
@@ -87,7 +101,7 @@ void Timeline::zoomAt(double factor, double x)
 {
     x = std::clamp(x, margin, std::max(margin, width() - margin));
     const double anchor = timeAt(x);
-    zoom_ = std::clamp(zoom_ * factor, 1.0, 4096.0);
+    zoom_ = std::clamp(zoom_ * factor, 1.0 / 16, 4096.0);
     offset_ = anchor - (x - margin) / scale();
     clampOffset();
     update();
@@ -113,57 +127,121 @@ void Timeline::resizeEvent(QResizeEvent *) { clampOffset(); }
 void Timeline::paintEvent(QPaintEvent *)
 {
     QPainter p(this);
-    p.fillRect(rect(), palette().window());
-    if (clips_.empty())
+    const bool dark = palette().color(QPalette::Window).lightness() < 128;
+    const QColor track(dark ? 0x171d26 : 0xf0f3f7);
+    const QColor ruler(dark ? 0x242c38 : 0xe4eaf1);
+    const QColor grid(dark ? 0x343e4c : 0xd3dde7);
+    const QColor text(dark ? 0xc7d2e0 : 0x415064);
+    const QColor playhead(dark ? 0xff9a6e : 0xd24d2a);
+    const auto bodyHeight = std::min(clipHeight, height() - trackY - 8);
+    p.fillRect(rect(), track);
+    p.fillRect(0, 0, width(), rulerHeight, ruler);
+    p.setPen(grid);
+    p.drawLine(0, rulerHeight - 1, width(), rulerHeight - 1);
+    if (clips_.empty()) {
+        p.setPen(text);
+        p.drawText(QRect(0, rulerHeight, width(), height() - rulerHeight), Qt::AlignCenter,
+                   tr("Add clips from the media bin"));
         return;
-    const double desired = 84 / scale();
-    const double unit = std::pow(10.0, std::floor(std::log10(desired)));
-    const double tick = (desired / unit <= 2 ? 2 : (desired / unit <= 5 ? 5 : 10)) * unit;
-    const int decimals = std::clamp(static_cast<int>(std::ceil(-std::log10(tick))), 0, 6);
-    p.setPen(palette().windowText().color());
-    for (double t = std::ceil(offset_ / tick) * tick; t <= duration_ && xAt(t) <= width(); t += tick) {
-        const qreal x = xAt(t);
-        p.drawLine(QPointF(x, trackY - 9), QPointF(x, trackY - 2));
-        p.drawText(QPointF(x + 3, trackY - 13), timeLabel(t, decimals));
     }
+    if (hasTiming()) {
+        const double desired = 92 / scale();
+        const double unit = std::pow(10.0, std::floor(std::log10(desired)));
+        const double tick = (desired / unit <= 2 ? 2 : (desired / unit <= 5 ? 5 : 10)) * unit;
+        const int decimals = std::clamp(static_cast<int>(std::ceil(-std::log10(tick))), 0, 6);
+        const auto labelFont = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+        p.save();
+        p.setFont(labelFont);
+        for (double t = std::floor(offset_ / tick) * tick; xAt(t) <= width(); t += tick) {
+            const qreal x = xAt(t);
+            p.setPen(grid);
+            p.drawLine(QPointF(x, rulerHeight - 13), QPointF(x, height()));
+            for (int minor = 1; minor < 5; ++minor) {
+                const auto mark = xAt(t + tick * minor / 5);
+                p.drawLine(QPointF(mark, rulerHeight - 6), QPointF(mark, rulerHeight - 1));
+            }
+            p.setPen(text);
+            p.drawText(QPointF(x + 4, 18), timeLabel(t, decimals));
+        }
+        p.restore();
+    } else {
+        p.setPen(text);
+        p.drawText(QRect(12, 0, width() - 24, rulerHeight), Qt::AlignVCenter,
+                   timingProblem_);
+    }
+
+    p.save();
+    p.setRenderHint(QPainter::Antialiasing);
     p.setClipRect(QRectF(margin, trackY, std::max(1.0, width() - 2 * margin), height() - trackY));
     for (size_t row = 0; row < clips_.size(); ++row) {
         const auto &clip = clips_[row];
         const auto start = starts_[row];
         const double x = xAt(start);
         const double end = xAt(start + clip.duration);
-        if (end < margin || x > width() - margin)
+        if (end < margin)
             continue;
-        const auto span = QRectF(x, trackY, std::max(0.0, end - x - 1), height() - trackY - 13);
+        if (x > width() - margin)
+            break;
+        const auto span = QRectF(x + 0.5, trackY + 0.5, std::max(1.0, end - x - 2), bodyHeight - 1);
         const bool active = selected_ == row;
-        const auto fill = active ? palette().highlight() : palette().button();
-        p.fillRect(span, fill);
-        p.setPen(active ? palette().highlightedText().color() : palette().buttonText().color());
-        const auto textRect = span.intersected(rect()).adjusted(7, 0, -5, 0);
-        p.drawText(textRect, Qt::AlignVCenter,
+        const bool available = clip.unavailable.isEmpty();
+        const auto color = available ? (clip.color.isValid() ? clip.color : sourceColor(row)) : QColor(0x63434a);
+        p.setBrush(color);
+        p.setPen(available ? QPen(active ? QColor(0xb4d9ff) : color.lighter(135), active ? 2 : 1)
+                           : QPen(QColor(0xf6b9aa), active ? 2 : 1, Qt::DashLine));
+        p.drawRoundedRect(span, 5, 5);
+        p.save();
+        p.setClipRect(span.adjusted(2, 1, -2, -1), Qt::IntersectClip);
+        const auto visible = span.intersected(QRectF(rect()));
+        const auto label = visible.adjusted(10, 4, -8, available ? -13 : -23);
+        p.setPen(Qt::white);
+        auto titleFont = p.font();
+        titleFont.setWeight(QFont::DemiBold);
+        p.setFont(titleFont);
+        p.drawText(label, Qt::AlignVCenter,
                    p.fontMetrics().elidedText(clip.label, Qt::ElideRight,
-                                              std::max(0, static_cast<int>(textRect.width()))));
+                                              std::max(0, static_cast<int>(label.width()))));
+        if (!available) {
+            p.setFont(font());
+            p.setPen(QColor(0xffddd4));
+            const auto note = visible.adjusted(10, 23, -8, -3);
+            p.drawText(note, Qt::AlignVCenter,
+                       p.fontMetrics().elidedText(clip.unavailable, Qt::ElideRight,
+                                                  std::max(0, static_cast<int>(note.width()))));
+        }
         const auto first = std::lower_bound(clip.safeOffsets.begin(), clip.safeOffsets.end(), offset_ - start);
         double lastMark = margin - 5;
+        p.setPen(QColor(218, 233, 248, 170));
         for (auto point = first; point != clip.safeOffsets.end(); ++point) {
             const auto mark = xAt(start + *point);
             if (mark > width() - margin)
                 break;
             if (mark > lastMark + 4) {
-                p.drawLine(QPointF(mark, span.bottom() - 8), QPointF(mark, span.bottom()));
+                p.drawLine(QPointF(mark, span.bottom() - 9), QPointF(mark, span.bottom() - 4));
                 lastMark = mark;
             }
         }
+        if (hasTiming() && span.width() >= 26) {
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(255, 255, 255, active ? 150 : 66));
+            p.drawRoundedRect(QRectF(span.left() + 3, span.center().y() - 8, 2, 16), 1, 1);
+            p.drawRoundedRect(QRectF(span.right() - 5, span.center().y() - 8, 2, 16), 1, 1);
+        }
+        p.restore();
     }
-    p.setClipping(false);
+    p.restore();
     if (draft_) {
         p.setPen(QPen(palette().highlight().color(), 2, Qt::DashLine));
-        p.drawLine(QPointF(*draft_, trackY), QPointF(*draft_, height() - 7));
+        p.drawLine(QPointF(*draft_, trackY - 4), QPointF(*draft_, trackY + bodyHeight + 4));
     }
     const auto x = xAt(position_);
-    if (x >= margin && x <= width() - margin) {
-        p.setPen(QPen(palette().windowText().color(), 2));
-        p.drawLine(QPointF(x, 10), QPointF(x, height() - 7));
+    if (hasTiming() && x >= margin && x <= width() - margin) {
+        p.setRenderHint(QPainter::Antialiasing);
+        p.setPen(QPen(playhead, 1.75));
+        p.drawLine(QPointF(x, 12), QPointF(x, height() - 5));
+        p.setPen(Qt::NoPen);
+        p.setBrush(playhead);
+        p.drawPolygon(QPolygonF{{x - 6, 0}, {x + 6, 0}, {x + 6, 8}, {x, 14}, {x - 6, 8}});
     }
 }
 
@@ -199,9 +277,9 @@ std::optional<Timeline::Gesture> Timeline::hit(double x) const
     const auto start = xAt(starts_[row]);
     const auto end = xAt(starts_[row] + clips_[row].duration);
     const auto edge = std::min(8.0, (end - start) / 3);
-    if (x - start <= edge)
+    if (hasTiming() && x - start <= edge)
         return Gesture{Drag::TrimIn, row, x};
-    if (end - x <= edge)
+    if (hasTiming() && end - x <= edge)
         return Gesture{Drag::TrimOut, row, x};
     return Gesture{Drag::Move, row, x};
 }
@@ -212,6 +290,8 @@ void Timeline::mousePressEvent(QMouseEvent *event)
         return;
     const auto x = event->position().x();
     if (event->position().y() < trackY) {
+        if (!hasTiming())
+            return;
         drag_ = Gesture{Drag::Scrub};
         emit scrubbed(nearestSafe(std::clamp(timeAt(x), 0.0, duration_)));
     } else if (const auto point = hit(x)) {
@@ -233,7 +313,7 @@ void Timeline::mouseMoveEvent(QMouseEvent *event)
                          : std::clamp(x, margin, std::max(margin, width() - margin));
             update();
         }
-    } else if (event->position().y() < trackY) {
+    } else if (hasTiming() && event->position().y() < trackY) {
         setCursor(Qt::CrossCursor);
     } else if (const auto point = hit(x)) {
         setCursor(point->type == Drag::Move ? Qt::OpenHandCursor : Qt::SizeHorCursor);
