@@ -268,17 +268,24 @@ reference tests and six of seven C++ CTest cases. Its generated AVC, HEVC,
 Main 10 and VFR exports matched the Rust reference. The Windows Ctrl+C
 case returned 0 after publication instead of 130. The test now explicitly
 enables Ctrl+C delivery before launching each program on its own console.
-The replacement Windows CI result is required to close the automated core
-gate. The Windows core API test already exercises cancellation while a
-media tool is running and verifies staging cleanup.
+[Core parity run 45627893282](https://github.com/bugrakoc/SpoolCut/actions/runs/45627893282)
+then passed all seven CTest cases on both Linux and native Windows without
+skips. Windows used MSYS2 UCRT64, GCC 16.2.0, Qt 6.12.0, FFmpeg 9.1 and
+Rust 1.100.0. Ctrl+C cancelled the C++ and Rust CLIs during staging,
+returned 130, and left neither final output nor temporary staging files.
+The core API also passed cancellation with a media tool active, a locked
+project, a competing destination, source identity changes and Unicode paths.
+Linux repeated the warnings-as-errors, ASan/UBSan and static analysis checks.
+Local Debian 13 also passed the seven differential tests against the reference
+built with Rust 1.85.1.
 
 ### Remaining roadmap gates
 
 - **A:** Complete. **B:** Prototype approved. Matched target-machine performance
   measurements and the full display-scaling comparison are still open.
-- **C:** Core and differential fixtures implemented. Complete native Windows
-  CLI Ctrl+C verification. Check original Main 10 footage with the affected
-  player and removable/exFAT behavior during platform acceptance.
+- **C:** Automated core parity passed on Linux and Windows. Check original
+  Main 10 footage with the affected player and removable/exFAT behavior during
+  platform acceptance.
 - **D:** Desktop feature parity is outstanding. The verified Qt prototype is
   the starting point for integration with the shared core.
 - **E:** Replacement builds, packaging acceptance and release review are
