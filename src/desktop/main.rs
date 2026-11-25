@@ -1,5 +1,9 @@
+#![cfg_attr(all(windows, not(test)), windows_subsystem = "windows")]
+
 mod editor;
+mod graphics;
 mod interactive;
+#[cfg(target_os = "linux")]
 mod launcher;
 mod preview;
 mod timeline;
@@ -28,6 +32,8 @@ use timeline::{ClipVisual, Draft, Edge, Hit};
 use widgets::{Widgets, seconds};
 
 const APPLICATION_ID: &str = "io.github.bugrakoc.SpoolCut";
+#[cfg(not(windows))]
+const APP_ICON: &[u8] = include_bytes!("../../assets/io.github.bugrakoc.SpoolCut.png");
 
 #[derive(Default)]
 struct State {
@@ -118,6 +124,7 @@ fn main() -> glib::ExitCode {
     glib::set_prgname(Some(APPLICATION_ID));
     let application =
         gtk::Application::new(Some(APPLICATION_ID), gio::ApplicationFlags::HANDLES_OPEN);
+    #[cfg(target_os = "linux")]
     application.connect_startup(|_| {
         if let Err(error) = launcher::register_appimage() {
             eprintln!("Could not register the SpoolCut desktop launcher: {error:#}");
@@ -156,6 +163,9 @@ impl App {
             timeline_drag: RefCell::new(None),
         });
         app.connect();
+        if !graphics::prefer_opengl() {
+            app.schedule_software_preview(None);
+        }
         app.refresh();
         let current = Rc::clone(&app);
         glib::timeout_add_local(Duration::from_millis(24), move || {
@@ -254,13 +264,21 @@ impl App {
         let weak = Rc::downgrade(self);
         self.ui.canvas.connect_realize(move |area| {
             let Some(app) = weak.upgrade() else { return };
+            if !graphics::prefer_opengl() {
+                return;
+            }
             area.make_current();
             let result = area
                 .error()
                 .map_or_else(Preview::new, |error| Err(error.into()));
             match result {
-                Ok(player) => *app.preview.borrow_mut() = Some(player),
-                Err(error) => app.schedule_software_preview(error),
+                Ok(player) => {
+                    *app.preview.borrow_mut() = Some(player);
+                    app.ui
+                        .preview_stack
+                        .set_tooltip_text(Some("OpenGL preview"));
+                }
+                Err(error) => app.schedule_software_preview(Some(error)),
             }
             app.controls();
         });
@@ -276,7 +294,7 @@ impl App {
                 .filter(|player| !player.is_software())
                 .map(Preview::draw);
             if let Some(Err(error)) = result {
-                app.schedule_software_preview(error);
+                app.schedule_software_preview(Some(error));
             }
             glib::Propagation::Stop
         });
@@ -292,7 +310,7 @@ impl App {
         });
     }
 
-    fn schedule_software_preview(self: &Rc<Self>, cause: anyhow::Error) {
+    fn schedule_software_preview(self: &Rc<Self>, cause: Option<anyhow::Error>) {
         if self.fallback_queued.replace(true) {
             return;
         }
@@ -322,7 +340,14 @@ impl App {
             };
             match Preview::new_software() {
                 Ok(player) => {
-                    eprintln!("OpenGL preview unavailable, using software rendering: {cause:#}");
+                    if let Some(cause) = cause {
+                        eprintln!(
+                            "OpenGL preview unavailable, using software rendering: {cause:#}"
+                        );
+                    }
+                    app.ui
+                        .preview_stack
+                        .set_tooltip_text(Some("Software preview"));
                     *app.preview.borrow_mut() = Some(player);
                     app.ui
                         .preview_stack
@@ -332,7 +357,12 @@ impl App {
                     }
                 }
                 Err(error) => {
-                    let message = format!("OpenGL preview: {cause:#}. Software preview: {error:#}");
+                    let message = match cause {
+                        Some(cause) => {
+                            format!("OpenGL preview: {cause:#}. Software preview: {error:#}")
+                        }
+                        None => format!("Software preview: {error:#}"),
+                    };
                     eprintln!("{message}");
                     *app.preview_error.borrow_mut() = Some(message.clone());
                     app.state.borrow_mut().playing = false;

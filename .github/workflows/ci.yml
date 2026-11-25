@@ -70,6 +70,8 @@ jobs:
             mingw-w64-ucrt-x86_64-rust
             mingw-w64-ucrt-x86_64-pkgconf
             mingw-w64-ucrt-x86_64-ffmpeg
+            mingw-w64-ucrt-x86_64-gtk4
+            mingw-w64-ucrt-x86_64-mpv
       - name: Verify the native toolchain
         run: |
           set -euo pipefail
@@ -77,7 +79,14 @@ jobs:
           test "$(command -v rustc)" = /ucrt64/bin/rustc
           rustc -vV
           gcc -v
+          pkg-config --modversion gtk4 mpv
           ffmpeg -version
           ffprobe -version
       - name: Test stream-copy export
-        run: cargo test --locked
+        run: cargo test --locked --features desktop
+      - name: Test the desktop editor with software preview
+        env:
+          GSK_RENDERER: cairo
+          SPOOLCUT_PREVIEW: software
+          GTK_A11Y: none
+        run: cargo test --locked --features desktop --bin spoolcut-desktop -- --ignored

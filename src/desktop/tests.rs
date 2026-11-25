@@ -121,8 +121,8 @@ fn desktop_edit_preview_persist_export() {
     let gtk_app = gtk::Application::new(None::<&str>, gio::ApplicationFlags::NON_UNIQUE);
     gtk_app.register(gio::Cancellable::NONE).unwrap();
     let scratch = tempfile::tempdir().unwrap();
-    let a = scratch.path().join("red.mp4");
-    let b = scratch.path().join("blue.mp4");
+    let a = scratch.path().join("red ü clip.mp4");
+    let b = scratch.path().join("blue ş clip.mp4");
     fixture(&a, "red", 440);
     fixture(&b, "blue", 880);
 
@@ -302,7 +302,7 @@ fn desktop_edit_preview_persist_export() {
     wait_for("playback to end", || !app.state.borrow().playing);
     assert_eq!(app.state.borrow().position, 1_920_000);
 
-    app.schedule_software_preview(anyhow::anyhow!("Testing OpenGL fallback"));
+    app.schedule_software_preview(Some(anyhow::anyhow!("Testing OpenGL fallback")));
     wait_for("software preview fallback", || {
         app.preview
             .borrow()

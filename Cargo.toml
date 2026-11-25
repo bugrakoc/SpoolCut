@@ -27,4 +27,4 @@ gl = { version = "0.14", optional = true }
 libc = { version = "0.2", optional = true }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem", "Win32_System_Threading"] }
+windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem", "Win32_System_LibraryLoader", "Win32_System_Threading"] }

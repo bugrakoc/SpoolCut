@@ -9,6 +9,8 @@ use anyhow::{Context, Result, bail, ensure};
 use gtk::{gdk, glib};
 use libmpv2_sys as mpv;
 
+use crate::graphics::Resolver;
+
 #[derive(Debug)]
 pub enum Event {
     Started(i64),
@@ -21,35 +23,23 @@ pub struct Preview {
     player: NonNull<mpv::mpv_handle>,
     render: Option<NonNull<mpv::mpv_render_context>>,
     redraw: Box<AtomicBool>,
-    opengl: Option<OpenGl>,
+    opengl: Option<Box<Resolver>>,
     #[cfg(test)]
     pub last_pixel: std::cell::Cell<[u8; 4]>,
 }
-
-struct OpenGl {
-    // Keep the provider loaded for the lifetime of the render context.
-    _egl: libloading::Library,
-    lookup: Box<GetProcAddress>,
-}
-
-type GetProcAddress = unsafe extern "C" fn(*const c_char) -> *mut c_void;
 
 impl Preview {
     // The caller keeps this player on GTK's main thread and makes its GLArea
     // context current when creating, drawing, or dropping it.
     pub fn new() -> Result<Self> {
-        // SAFETY: These are the system EGL library and libmpv instance constructor.
-        let egl = unsafe { libloading::Library::new("libEGL.so.1") }.context("loading EGL")?;
-        // SAFETY: The system EGL library exposes this function with the EGL ABI.
-        let lookup = Box::new(unsafe { *egl.get::<GetProcAddress>(b"eglGetProcAddress\0")? });
-        Self::with_renderer(Some(OpenGl { _egl: egl, lookup }))
+        Self::with_renderer(Some(Box::new(Resolver::new()?)))
     }
 
     pub fn new_software() -> Result<Self> {
         Self::with_renderer(None)
     }
 
-    fn with_renderer(opengl: Option<OpenGl>) -> Result<Self> {
+    fn with_renderer(opengl: Option<Box<Resolver>>) -> Result<Self> {
         // SAFETY: The instance is uniquely owned and the application has initialized its locale.
         let player =
             NonNull::new(unsafe { mpv::mpv_create() }).context("creating libmpv player")?;
@@ -101,16 +91,15 @@ impl Preview {
         let api = if let Some(opengl) = &mut self.opengl {
             gl::load_with(|name| {
                 let name = CString::new(name).expect("GL function names contain no null bytes");
-                // SAFETY: EGL receives a valid null-terminated OpenGL symbol name.
-                unsafe { (opengl.lookup)(name.as_ptr()) }
+                opengl.lookup(&name)
             });
             ensure!(
-                gl::GetIntegerv::is_loaded(),
+                gl::GetIntegerv::is_loaded() && gl::BindFramebuffer::is_loaded(),
                 "OpenGL functions are unavailable"
             );
             init = mpv::mpv_opengl_init_params {
                 get_proc_address: Some(gl_proc),
-                get_proc_address_ctx: ptr::from_mut(opengl.lookup.as_mut()).cast(),
+                get_proc_address_ctx: ptr::from_mut(opengl.as_mut()).cast(),
             };
             c"opengl"
         } else {
@@ -440,8 +429,8 @@ impl Drop for Preview {
 }
 
 unsafe extern "C" fn gl_proc(context: *mut c_void, name: *const c_char) -> *mut c_void {
-    // SAFETY: Preview owns the lookup until after the render context is freed.
-    unsafe { (*context.cast::<GetProcAddress>())(name) }
+    // SAFETY: mpv passes a valid symbol name and Preview owns the boxed resolver.
+    unsafe { &*context.cast::<Resolver>() }.lookup(unsafe { CStr::from_ptr(name) })
 }
 
 unsafe extern "C" fn redraw(context: *mut c_void) {
