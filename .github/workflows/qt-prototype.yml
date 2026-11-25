@@ -77,7 +77,7 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends git ca-certificates g++ cmake ninja-build pkg-config \
-            qt6-base-dev qt6-wayland libmpv-dev ffmpeg libgl1-mesa-dri weston xvfb xauth
+            qt6-base-dev qt6-wayland libmpv-dev ffmpeg libglib2.0-bin libgl1-mesa-dri weston xvfb xauth
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
@@ -140,7 +140,7 @@ jobs:
           docker run --rm -v "$PWD:/src" -w /src debian:trixie bash -euxc '
             apt-get update
             apt-get install -y --no-install-recommends ca-certificates curl git g++ cmake ninja-build pkg-config python3 \
-              qt6-base-dev qt6-wayland libmpv-dev ffmpeg squashfs-tools xz-utils zstd
+              qt6-base-dev qt6-wayland qt6-xdgdesktopportal-platformtheme libmpv-dev ffmpeg squashfs-tools xz-utils zstd
             sed -e "s/^Types: deb$/Types: deb-src/" /etc/apt/sources.list.d/debian.sources \
               > /etc/apt/sources.list.d/debian-source.sources
             apt-get update
@@ -154,7 +154,7 @@ jobs:
           docker run --rm -v "$PWD:/src:ro" -w /src fedora:44 bash -euxc '
             dnf install -y weston mesa-dri-drivers libglvnd-egl libglvnd-glx libglvnd-opengl \
               mesa-libgbm libdrm vulkan-loader libwayland-client libwayland-cursor libwayland-egl \
-              dejavu-sans-fonts xkeyboard-config
+              dejavu-sans-fonts xkeyboard-config desktop-file-utils
             export XDG_RUNTIME_DIR="$(mktemp -d)"
             export QT_QPA_PLATFORM=wayland WAYLAND_DISPLAY=spoolcut-fedora LIBGL_ALWAYS_SOFTWARE=1
             weston --backend=headless --renderer=gl --shell=kiosk-shell.so \

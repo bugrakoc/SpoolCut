@@ -1,3 +1,4 @@
+#include "appimage_launcher.h"
 #include "window.h"
 #include "preview.h"
 
@@ -12,7 +13,7 @@ int main(int argc, char **argv) {
     QApplication app(argc, argv);
     std::setlocale(LC_NUMERIC, "C");
     app.setApplicationName("SpoolCut Qt prototype");
-    app.setDesktopFileName("io.github.bugrakoc.SpoolCut.QtPrototype");
+    app.setDesktopFileName(QLatin1String(spoolCutDesktopId));
     app.setWindowIcon(QIcon(":/io.github.bugrakoc.SpoolCut.png"));
 
     QCommandLineParser parser;
@@ -21,6 +22,11 @@ int main(int argc, char **argv) {
     const QCommandLineOption smoke("smoke", "Exit successfully after drawing a frame with audio.");
     parser.addOption(smoke);
     parser.process(app);
+#ifdef Q_OS_LINUX
+    const QString launcherError = registerAppImageLauncher();
+    if (!launcherError.isEmpty())
+        qWarning().noquote() << launcherError;
+#endif
 
     Window window;
     if (parser.isSet(smoke)) {

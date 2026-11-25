@@ -23,10 +23,11 @@ CTest generates H.264 and HEVC Main 10 input with AAC audio and opens the
 widgets. Run it in a graphical session, under Xvfb, or under Weston. It uses
 libmpv's null audio output to verify the decoded audio path in CI.
 
-Launch `build-qt/spoolcut-qt` or `build-qt/spoolcut-qt.exe`. Set
-`SPOOLCUT_QT_PREVIEW=software` before launch to force CPU rendering. The status
-bar initially reports the renderer, and hovering the preview shows the renderer
-and any OpenGL fallback reason. Both renderers currently use CPU video decoding.
+Launch `build-qt/spoolcut-qt` or `build-qt/spoolcut-qt.exe`. Linux tries OpenGL
+by default. Set `SPOOLCUT_QT_PREVIEW=software` to force CPU rendering. Windows
+starts with software rendering. Set `SPOOLCUT_QT_PREVIEW=opengl` to test OpenGL
+explicitly. The status bar and preview tooltip show the selected renderer and
+any fallback reason. Both renderers use CPU video decoding.
 
 ## Windows portable ZIP
 
@@ -59,6 +60,8 @@ matching source archive available alongside the binary if redistributing.
 
 Make `SpoolCut-Qt-Fedora-x86_64.AppImage` executable, then open it on Fedora
 44 or newer. The AppImage is built with Debian 13's Qt and codec-enabled
-multimedia libraries and uses the Fedora host's graphics drivers. If user-mode
+multimedia libraries and uses the Fedora host's graphics drivers. On launch it
+installs a per-user desktop entry for the prototype's own app ID. On KDE it
+requests the file picker through the session's XDG Desktop Portal. If user-mode
 FUSE is unavailable, run `./SpoolCut-Qt-Fedora-x86_64.AppImage --appimage-extract-and-run`.
 Keep the matching Linux source archive available if redistributing the AppImage.

@@ -53,6 +53,7 @@ def bundle(exe, app):
     for directory in ("xcbglintegrations", "wayland-decoration-client",
                       "wayland-graphics-integration-client", "wayland-shell-integration"):
         platforms.extend(QT_PLUGINS.glob(directory + "/*.so"))
+    platforms.append(QT_PLUGINS / "platformthemes/libqxdgdesktopportal.so")
     roots.extend((p, app / "plugins" / p.relative_to(QT_PLUGINS)) for p in platforms)
     for source, target in roots:
         copy(source, target)

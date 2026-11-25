@@ -3,4 +3,11 @@ set -eu
 base=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 export LD_LIBRARY_PATH="$base/lib"
 export QT_PLUGIN_PATH="$base/plugins"
+case ":${XDG_CURRENT_DESKTOP:-}:" in
+    *:KDE:*)
+        case "${QT_QPA_PLATFORMTHEME:-}" in
+            ''|kde) export QT_QPA_PLATFORMTHEME=xdgdesktopportal ;;
+        esac
+        ;;
+esac
 exec "$base/bin/spoolcut-qt" "$@"

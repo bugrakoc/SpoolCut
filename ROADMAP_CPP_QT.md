@@ -1,6 +1,6 @@
 # SpoolCut — C++ / Qt 6 migration roadmap
 
-Status: baseline audit complete. The prototype is at the maintainer approval checkpoint. See [migration evidence](docs/CPP_QT_STATUS.md) for hosted test results, downloads and outstanding hardware checks.
+Status. Baseline audit complete. Fedora KDE confirmed NVIDIA OpenGL preview. Windows 11 HEVC playback needs a retest before prototype approval. See [migration evidence](docs/CPP_QT_STATUS.md) for the test builds and manual results.
 
 ## 1. Decision and scope
 

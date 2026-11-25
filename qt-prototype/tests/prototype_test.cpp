@@ -1,8 +1,11 @@
+#include "appimage_launcher.h"
 #include "preview.h"
 #include "timeline.h"
 #include "window.h"
 
 #include <QDir>
+#include <QElapsedTimer>
+#include <QFile>
 #include <QFileInfo>
 #include <QOpenGLWidget>
 #include <QProcess>
@@ -33,6 +36,46 @@ private slots:
         QCOMPARE(scrub.size(), 1);
         QCOMPARE(scrub.takeFirst().at(0).toDouble(), 4);
     }
+
+#ifdef Q_OS_LINUX
+    void launcherInstallation() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString data = directory.filePath("data");
+        const QString launcher = QDir(data).filePath(QString("applications/%1.desktop")
+                                                     .arg(QLatin1String(spoolCutDesktopId)));
+        const QStringList names{"SpoolCut test.AppImage",
+                                QStringLiteral(R"(SpoolCut = "ü" %F $tag \.AppImage)")};
+        const QString media = directory.filePath("example clip.mp4");
+        const QString gio = QStandardPaths::findExecutable("gio");
+        QVERIFY(!gio.isEmpty());
+        for (const auto &name : names) {
+            const QString image = directory.filePath(name);
+            QFile stub(image);
+            QVERIFY(stub.open(QIODevice::WriteOnly));
+            const QByteArray script = "#!/bin/sh\nprintf '%s' \"$1\" > \"$0.args\"\n";
+            QCOMPARE(stub.write(script), script.size());
+            stub.close();
+            QVERIFY(stub.setPermissions(QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+            QVERIFY2(installAppImageLauncher(image, data).isEmpty(), qPrintable(image));
+            QProcess launch;
+            launch.start(gio, {"launch", launcher, media});
+            QVERIFY(launch.waitForFinished());
+            QCOMPARE(launch.exitCode(), 0);
+            QFile arguments(image + ".args");
+            QTRY_VERIFY_WITH_TIMEOUT(arguments.exists(), 4000);
+            QVERIFY(arguments.open(QIODevice::ReadOnly));
+            QCOMPARE(arguments.readAll(), media.toUtf8());
+        }
+        QFile outsider(launcher);
+        QVERIFY(outsider.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        QCOMPARE(outsider.write("custom launcher"), 15);
+        outsider.close();
+        QVERIFY(installAppImageLauncher(directory.filePath(names.front()), data).isEmpty());
+        QVERIFY(outsider.open(QIODevice::ReadOnly));
+        QCOMPARE(outsider.readAll(), QByteArray("custom launcher"));
+    }
+#endif
 
     void previewLifecycle() {
         QTemporaryDir directory(QDir::tempPath() + "/SpoolCut ü clips-XXXXXX");
@@ -83,6 +126,12 @@ private slots:
             std::fflush(stdout);
             if (qEnvironmentVariable("SPOOLCUT_QT_PREVIEW") == "software")
                 QCOMPARE(renderer, QString("Software"));
+#ifdef Q_OS_WIN
+            if (qEnvironmentVariable("SPOOLCUT_QT_PREVIEW") == "auto") {
+                QCOMPARE(renderer, QString("Software"));
+                QVERIFY(window.preview()->findChild<QOpenGLWidget *>() == nullptr);
+            }
+#endif
             if (qEnvironmentVariableIsSet("SPOOLCUT_QT_REQUIRE_OPENGL")
                 && qEnvironmentVariable("SPOOLCUT_QT_PREVIEW") != "software")
                 QVERIFY2(renderer.startsWith("OpenGL"), qPrintable(renderer));
@@ -100,6 +149,19 @@ private slots:
             QTRY_VERIFY_WITH_TIMEOUT(color().red() > 180 && color().blue() < 70, 3000);
             window.togglePlayback();
             QTRY_VERIFY_WITH_TIMEOUT(window.preview()->position() > 0.20, 5000);
+
+            window.scrub(3.6);
+            QTest::qWait(120);
+            QElapsedTimer join;
+            const auto ended = connect(window.preview(), &Preview::ended, &window, [&] { join.start(); });
+            window.togglePlayback();
+            QTRY_VERIFY_WITH_TIMEOUT(join.isValid(), 5000);
+            QTRY_VERIFY_WITH_TIMEOUT(color().blue() > 180 && color().red() < 70, 5000);
+            std::fprintf(stdout, "Automatic join to visible frame: %lld ms\n",
+                         static_cast<long long>(join.elapsed()));
+            std::fflush(stdout);
+            disconnect(ended);
+
             for (int i = 0; i < 20; ++i) {
                 window.scrub(i % 2 ? 7.0 - i * 0.06 : 1.5 + i * 0.04);
                 window.resize(850 + i * 9, 570 + i * 4);

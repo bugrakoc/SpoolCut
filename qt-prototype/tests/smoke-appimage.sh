@@ -9,6 +9,10 @@ cp "$image" 'SpoolCut ü relocated/SpoolCut Qt.AppImage'
 image="$workspace/SpoolCut ü relocated/SpoolCut Qt.AppImage"
 "$image" --appimage-extract >/dev/null
 bundle="$workspace/squashfs-root"
+export XDG_DATA_HOME="$workspace/desktop-data"
+export XDG_CURRENT_DESKTOP=KDE
+test -f "$bundle/plugins/platformthemes/libqxdgdesktopportal.so"
+unset QT_QPA_PLATFORMTHEME
 for video in avc hevc; do
     encoding=(-c:v libx264)
     if [[ $video == hevc ]]; then
@@ -18,7 +22,16 @@ for video in avc hevc; do
         -f lavfi -i testsrc2=size=320x180:rate=25:duration=2 \
         -f lavfi -i sine=sample_rate=48000:duration=2 "${encoding[@]}" -c:a aac "$video ü video.mp4"
     for mode in software auto; do
-        env PATH=/usr/bin:/bin SPOOLCUT_QT_PREVIEW="$mode" SPOOLCUT_QT_TEST_AUDIO_NULL=1 \
-            APPIMAGE_EXTRACT_AND_RUN=1 "$image" --smoke "$workspace/$video ü video.mp4"
+        env QT_DEBUG_PLUGINS=1 PATH=/usr/bin:/bin SPOOLCUT_QT_PREVIEW="$mode" SPOOLCUT_QT_TEST_AUDIO_NULL=1 \
+            APPIMAGE_EXTRACT_AND_RUN=1 "$image" --smoke "$workspace/$video ü video.mp4" > "$workspace/preview.log" 2>&1 || {
+                cat "$workspace/preview.log"
+                exit 1
+            }
+        grep -F 'platformthemes/libqxdgdesktopportal.so" loaded library' "$workspace/preview.log"
+        grep -E '^(Software|OpenGL)' "$workspace/preview.log"
     done
 done
+launcher="$XDG_DATA_HOME/applications/io.github.bugrakoc.SpoolCut.QtPrototype.desktop"
+desktop-file-validate "$launcher"
+grep -Fx "$(printf 'Exec="%s" %%F' "$image")" "$launcher"
+test -s "$XDG_DATA_HOME/icons/hicolor/256x256/apps/io.github.bugrakoc.SpoolCut.QtPrototype.png"

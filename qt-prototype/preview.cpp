@@ -26,6 +26,17 @@
 namespace {
 QString mpvError(int code) { return QString::fromUtf8(mpv_error_string(code)); }
 
+bool preferSoftware() {
+    const auto mode = qEnvironmentVariable("SPOOLCUT_QT_PREVIEW");
+#ifdef Q_OS_WIN
+    // Creating a QOpenGLWidget can block inside a VM's graphics driver before
+    // the event loop can run the fallback timer. Keep OpenGL opt-in on Windows.
+    return mode != QStringLiteral("opengl");
+#else
+    return mode == QStringLiteral("software");
+#endif
+}
+
 struct HandleDeleter {
     void operator()(mpv_handle *handle) const { mpv_terminate_destroy(handle); }
 };
@@ -104,10 +115,8 @@ public:
 
     void setPlaying(bool playing) {
         playing_ = playing;
-        if (loaded_) {
-            int pause = !playing;
-            mpv_set_property_async(handle_.get(), 0, "pause", MPV_FORMAT_FLAG, &pause);
-        }
+        if (loaded_)
+            applyPause();
     }
 
     void stop() {
@@ -141,6 +150,11 @@ signals:
     void ended();
 
 private:
+    void applyPause() {
+        int pause = !playing_;
+        mpv_set_property_async(handle_.get(), 0, "pause", MPV_FORMAT_FLAG, &pause);
+    }
+
     void send(uint64_t id, std::initializer_list<const char *> args) {
         std::vector<const char *> command(args);
         command.push_back(nullptr);
@@ -161,7 +175,17 @@ private:
         // File paths are absolute and UTF-8, including on Windows. libmpv reads
         // its argument array directly, so no command-line quoting is involved.
         const QByteArray file = path_.toUtf8();
-        send(1, {"loadfile", file.constData(), "replace"});
+        const double start = requested_.value_or(0.0);
+        requested_.reset();
+        applyPause();
+        // Let mpv start at the requested position on the first decode. At a
+        // join, load from the beginning without a second, redundant exact seek.
+        if (start > 0.0) {
+            const QByteArray option = "start=" + QByteArray::number(start, 'f', 6);
+            send(1, {"loadfile", file.constData(), "replace", "-1", option.constData()});
+        } else {
+            send(1, {"loadfile", file.constData(), "replace"});
+        }
     }
 
     void finishLoad(const QString &error) {
@@ -272,11 +296,13 @@ protected:
         void *buffer = pixels_.data();
         size_t space = pixels_.size();
         void *aligned = std::align(64, length, buffer, space);
+        int block = 0;
         mpv_render_param args[] = {
             {MPV_RENDER_PARAM_SW_SIZE, dimensions},
             {MPV_RENDER_PARAM_SW_FORMAT, const_cast<char *>("bgr0")},
             {MPV_RENDER_PARAM_SW_STRIDE, &stride},
-            {MPV_RENDER_PARAM_SW_POINTER, aligned}, {}
+            {MPV_RENDER_PARAM_SW_POINTER, aligned},
+            {MPV_RENDER_PARAM_BLOCK_FOR_TARGET_TIME, &block}, {}
         };
         const int result = surface_.render(args);
         if (result < 0) {
@@ -468,7 +494,7 @@ void Preview::open(const QString &path, double seconds, bool playing) {
     position_ = seconds;
     playing_ = playing;
     if (!surface_) {
-        installSurface(qEnvironmentVariable("SPOOLCUT_QT_PREVIEW") == QStringLiteral("software"));
+        installSurface(preferSoftware());
     } else {
         layout_->setCurrentWidget(view_);
         surface_->open(path, seconds, playing);

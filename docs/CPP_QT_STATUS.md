@@ -127,3 +127,31 @@ Follow the [manual checklist](../qt-prototype/README.md#manual-checks), includin
 actual audio and playback on both systems, the preview renderer tooltip and
 100%, 150% and 200% display scaling. The results above verify the prototype's
 scope. Milestones C through E await maintainer approval.
+
+### Maintainer test on 25 November 2026
+
+| Check | Fedora KDE Wayland | Windows 11 |
+| --- | --- | --- |
+| Media and preview | Import, drag and drop, scrubbing and resize worked. Playback through a join paused for about one second. Preview looked sharp. The tooltip reported `OpenGL NVIDIA RTX 4070 PCIe SSE2`. | Opening HEVC via the picker or drag and drop left a white, unresponsive window. Playback and the renderer tooltip could not be checked. |
+| Desktop integration | Window controls worked. The taskbar showed a generic W icon. Open media used the generic Qt file picker. | Explorer and taskbar icons looked correct. Open media used the native Windows picker. |
+| Comparison with GTK | The prototype felt faster and looked worse. | The prototype felt faster and looked worse. |
+
+The Windows stall blocks prototype approval. The earlier hosted Windows run
+could reach the fallback timer when Qt failed to create its OpenGL context.
+A driver that blocks while creating the widget can prevent the timer from
+running. That is a plausible cause of the white window, and the observation
+alone cannot isolate it from codec, audio-device or other runtime behavior.
+
+The follow-up defaults to software preview on Windows, as the Rust reference
+does, and retains explicit OpenGL selection. The Windows portable smoke test
+now covers 4K HEVC Main 10 plus AAC with the development PATH removed. The
+Fedora AppImage installs a launcher with its own app ID and bundles Qt's
+XDG Desktop Portal plugin for KDE file dialogs. Preview loading now supplies
+the start position with the load command, avoiding a second seek at joins.
+The regression test measures from libmpv's end-of-file event to the next
+visible frame. That interval excludes audio-device drain and waits before
+the event. Retest the join with the same footage to check the reported pause.
+
+The approval gate stays open pending playback on the Windows 11 system and
+a check of the launcher, picker and join on Fedora. Visual polish remains
+part of the desktop evaluation.

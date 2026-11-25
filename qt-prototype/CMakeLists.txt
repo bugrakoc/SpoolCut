@@ -37,6 +37,9 @@ add_library(prototype-widgets STATIC preview.cpp timeline.cpp window.cpp)
 target_link_libraries(prototype-widgets PUBLIC Qt6::Widgets Qt6::OpenGLWidgets ${mpv_target})
 target_include_directories(prototype-widgets PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_options(prototype-widgets PRIVATE -Wall -Wextra -Wpedantic)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_sources(prototype-widgets PRIVATE appimage_launcher.cpp)
+endif()
 
 qt_add_executable(spoolcut-qt WIN32 main.cpp)
 qt_add_resources(spoolcut-qt "spoolcut-icon"
@@ -54,7 +57,15 @@ if(BUILD_TESTING)
     qt_add_executable(prototype-tests tests/prototype_test.cpp)
     target_link_libraries(prototype-tests PRIVATE prototype-widgets Qt6::Test)
     set_target_properties(prototype-tests PROPERTIES WIN32_EXECUTABLE OFF)
-    foreach(mode software auto)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        qt_add_resources(prototype-tests "prototype-test-icon"
+            PREFIX "/" BASE "../assets" FILES "../assets/io.github.bugrakoc.SpoolCut.png")
+    endif()
+    set(renderer_modes software auto)
+    if(WIN32)
+        list(APPEND renderer_modes opengl)
+    endif()
+    foreach(mode IN LISTS renderer_modes)
         add_test(NAME prototype-${mode} COMMAND prototype-tests)
         set_tests_properties(prototype-${mode} PROPERTIES
             ENVIRONMENT "SPOOLCUT_QT_PREVIEW=${mode};SPOOLCUT_QT_TEST_AUDIO_NULL=1"
