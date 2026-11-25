@@ -20,4 +20,3 @@ add_library(spoolcut-core STATIC
 target_include_directories(spoolcut-core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(spoolcut-core PUBLIC Qt6::Core)
 spoolcut_target(spoolcut-core)
-

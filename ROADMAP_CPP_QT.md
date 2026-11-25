@@ -1,6 +1,6 @@
 # SpoolCut — C++ / Qt 6 migration roadmap
 
-Status. The maintainer approved the migration after the Fedora KDE Wayland and Windows 11 prototype retests. Milestone C passed automated parity on Linux and Windows. Milestone D is implemented and in native verification. See [migration evidence](docs/CPP_QT_STATUS.md) for build instructions, results and open checks.
+Status. The maintainer approved the migration after the Fedora KDE Wayland and Windows 11 prototype retests. Milestones C and D passed hosted verification on Linux and Windows. The Milestone E test packages passed their relocated smoke tests and are ready for maintainer retesting. See [migration evidence](docs/CPP_QT_STATUS.md) for build instructions, results and open checks.
 
 ## 1. Decision and scope
 
@@ -72,12 +72,12 @@ Use explicit ownership, RAII, standard containers and smart pointers where appro
 
 ### E — Native CI, packaging and acceptance
 
-- [ ] Maintain reproducible documented Linux and Windows builds; use a coherent compiler/ABI/runtime for Qt/libmpv and a supported dependency source. Avoid hardcoded developer paths. Use CMake presets if they simplify the workflow.
-- [ ] Run core/export regression tests and desktop smoke tests on both targets. Use actual FFmpeg encoders for generated fixtures. Exercise packaged executables in clean/relocated environments. Record skipped tests and actual renderer.
+- [x] Maintain reproducible documented Linux and Windows builds; use a coherent compiler/ABI/runtime for Qt/libmpv and a supported dependency source. Avoid hardcoded developer paths. Use CMake presets if they simplify the workflow.
+- [x] Run core/export regression tests and desktop smoke tests on both targets. Use actual FFmpeg encoders for generated fixtures. Exercise packaged executables in clean/relocated environments. Record skipped tests and actual renderer.
 - [ ] Include Qt platform plugins (Wayland/X11 as appropriate; Windows), image/icon plugins as needed, libmpv, FFmpeg/ffprobe and compatible dependencies. Check executable discovery, non-ASCII paths, spaces, existing/locked outputs, different drives, supported and unsupported filesystems.
 - [ ] Test Fedora KDE Wayland with accelerated preview and Windows 11 x86-64 with clean VM and real accelerated graphics where available; include 100/150/200% scaling and monitor movement. Require maintainer confirmation for hardware cases CI cannot validate.
 - [ ] Preserve GPLv3 licensing. Verify redistribution terms for exact Qt modules, FFmpeg, libmpv and every bundled dependency, provide required notices and corresponding source/build recipes as applicable. Prefer redistributable dynamic Qt builds and avoid proprietary-only dependencies.
-- [ ] Document macOS boundaries (file identity/publication, paths, .app layout, Qt plugins, graphics backend, signing/notarization). Do not implement or claim macOS support yet.
+- [x] Document macOS boundaries (file identity/publication, paths, .app layout, Qt plugins, graphics backend, signing/notarization). Do not implement or claim macOS support yet.
 - [ ] Record a feature parity matrix, known limitations and comparative performance evidence. Update README, build instructions and general roadmap to the approved stack. Remove obsolete Rust/GTK production build paths only after parity; preserve reference commit and regression fixtures.
 - [ ] Open a reviewable PR to main when all required gates pass. Do not merge or release without explicit maintainer approval.
 

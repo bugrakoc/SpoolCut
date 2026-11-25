@@ -286,10 +286,10 @@ built with Rust 1.85.1.
 - **C:** Automated core parity passed on Linux and Windows. Check original
   Main 10 footage with the affected player and removable/exFAT behavior during
   platform acceptance.
-- **D:** Qt desktop integrated with the shared core and exercised locally.
-  Native CI and maintainer retests are required for sign-off.
-- **E:** Replacement builds, packaging acceptance and release review are
-  outstanding. Prototype packages and their smoke results are recorded above.
+- **D:** Qt desktop shares the core and passed Linux and Windows desktop
+  tests. Maintainer retests on the migration packages are open.
+- **E:** Hosted verification and artifacts are recorded below. Physical
+  platform checks and the final review remain open.
 
 ## D. Qt desktop integration
 
@@ -337,6 +337,110 @@ The local Debian software-renderer suite also passed under ASan and UBSan
 with third-party leak detection disabled. The first hosted ASan/UBSan desktop
 run failed a rapid-scrubbing assertion. It sampled the red and blue channels
 from separate widget grabs, which can render different frames. The test now
-uses both channels from one image per attempt. Package archive smoke, hardware
-retests, and the final feature and performance review are pending. Keep the
-Rust production paths available through those gates.
+uses both channels from one image per attempt. The corrected Linux CI passed,
+and four repeated local sanitized runs passed. Local software-renderer runs
+also passed at synthetic 1×, 1.5× and 2× scales.
+
+[Qt core parity run 45631202259](https://github.com/bugrakoc/SpoolCut/actions/runs/45631202259)
+passed on Linux and Windows for the package revision
+[`e55891a`](https://github.com/bugrakoc/SpoolCut/commit/e55891a5203f76cb3bc69c3cf246b33cd9be6b9c).
+[Desktop and package run 45631201615](https://github.com/bugrakoc/SpoolCut/actions/runs/45631201615)
+tested the same revision. Debian Linux passed X11 and Weston Wayland using
+software and Mesa llvmpipe, offscreen software fallback and the ASan/UBSan
+suite. The relocated Fedora 44 AppImage passed the AVC and HEVC Main 10
+preview, inspect, plan, export and decode cases under Weston. It selected
+software or llvmpipe as requested and loaded the portal theme.
+
+The [Fedora x86-64 AppImage artifact](https://github.com/bugrakoc/SpoolCut/actions/runs/45631201615/artifacts/15031047267)
+contains the AppImage and its checksum. Its
+[corresponding source archive](https://github.com/bugrakoc/SpoolCut/actions/runs/45631201615/artifacts/15031635678)
+carries the matching SpoolCut revision, Debian package sources and inventory,
+and the pinned AppImage runtime and source recipes.
+
+The [Windows 11 x86-64 portable ZIP artifact](https://github.com/bugrakoc/SpoolCut/actions/runs/45631201615/artifacts/15032340457)
+contains the ZIP and its checksum. Extract the outer Actions archive, then
+the inner ZIP, and open `SpoolCut Qt/bin/SpoolCutQt.exe`. The native
+Windows runner passed forced and default software rendering. The explicit
+OpenGL test fell back to software when the hosted runner could not create
+a context. The relocated package used only the system PATH
+and passed AVC and 4K HEVC Main 10 inspection, planning, export, decode and
+desktop playback. The desktop used the Windows software default and a null
+audio sink. Windows hardware OpenGL still needs a maintainer retest.
+
+The [Windows corresponding source archive](https://github.com/bugrakoc/SpoolCut/actions/runs/45631201615/artifacts/15030224747)
+carries the matching SpoolCut revision, exact MSYS2 package inventory,
+115 corresponding source packages and recipes verified during packaging.
+Both packages include dependency
+notices. Keep matching source available alongside any redistributed binary
+package.
+
+### Matched-project hosted comparison
+
+The [comparison job](https://github.com/bugrakoc/SpoolCut/actions/runs/45631201615/job/139264544377)
+used the same two-clip 720p25 AVC/AAC project in both editors on Debian
+Xvfb. Both used the software renderer and a null audio sink. As in the
+prototype comparison, figures are medians over three interleaved launches
+and eight source switches per launch. PSS excludes media-tool children and
+the display server. Startup ends at the first visible window, before source
+indexing completes.
+
+| Measurement | Rust / GTK | C++ / Qt |
+| --- | ---: | ---: |
+| First visible window | 144.3 ms | 86.6 ms |
+| Idle CPU (% of one core) | 0.2% | 0.6% |
+| Playing CPU (% of one core) | 12.8% | 8.6% |
+| Idle PSS | 170.0 MiB | 120.2 MiB |
+| Playing PSS | 180.3 MiB | 128.8 MiB |
+| Source-switch latency | 74.2 ms | 23.6 ms |
+
+These measurements apply to the hosted setup. Playback with real 4K footage,
+native audio, accelerated graphics and the maintainer's normal display
+configurations is part of the checklist below.
+
+### Feature parity and acceptance
+
+| Area | Evidence on `cpp-qt` | Remaining target-machine checks |
+| --- | --- | --- |
+| Core planning and lossless MKV export | Differential packet hashes, decoded frame order, durations, A/V offsets, unsafe cuts and cancellation on Linux and Windows. | Re-export the original HEVC Main 10 footage and play the result in the affected Windows player. |
+| Projects and media bin | Exact integer JSON round trips, portable source paths, reopen, resolution/codec/frame rate, missing source and relink validation. | Retest native file pickers and Explorer drop against the migration packages. |
+| Editing and preview | Proportional ruler, snapping, drag scrubbing, trim, split, reorder and history tests. AVC and Main 10 HEVC playback with forced software, OpenGL and fallback on CI. | Fedora KDE with NVIDIA OpenGL, Windows software on original footage, and an accelerated Windows OpenGL run where available. |
+| Jobs and filesystem | Worker cancellation, staging cleanup, existing output preservation, Windows locked project and source identity tests. | Removable/exFAT destinations and clean VM or physical target testing. |
+| Native desktop and performance | Hosted matched-project measurements and Linux synthetic scaling. | 100%, 150% and 200% on actual displays, mixed-DPI monitor movement, controls and taskbar icons on the current packages, and comparison with the same real footage. |
+
+### Maintainer checklist
+
+1. Import two MP4/MOV clips with different lengths and include H.264 and HEVC
+   Main 10 footage with audible AAC. Use paths with spaces and non-ASCII
+   characters. Append or drag the sources from the bin, then trim, split,
+   reorder and undo. Save and reopen the project. Move one source and relink it.
+2. Drag the ruler across joins in both directions, resize the window and
+   splitters during playback, and verify audio and visible cuts. Export a
+   compatible sequence and play the MKV. Compare preview and export around
+   the cuts. Export the original Main 10 footage and check it in the Windows
+   player that previously failed. Cancel a second export and check that staging
+   is removed. Try an existing destination and confirm that its contents survive.
+3. On Fedora KDE, confirm Wayland, the native picker, taskbar icon and window
+   controls. Record the renderer from the preview tooltip. Compare
+   `SPOOLCUT_QT_PREVIEW=software` with the usual OpenGL renderer.
+4. On Windows 11, extract the ZIP on a clean VM with no development PATH and
+   confirm Explorer and taskbar icons, native controls, picker and file
+   drag-and-drop. Verify the software default with Main 10 playback. Test
+   `SPOOLCUT_QT_PREVIEW=opengl` on accelerated hardware when available.
+5. Check preview sharpness and layout at 100%, 150% and 200% scaling. Move the
+   window between monitors with different scale factors when available. Exercise
+   another drive, a locked project, and a removable or exFAT destination.
+   Export must publish atomically or report an error while preserving existing files.
+6. For a GTK comparison, use the same session, resolution, scaling, project
+   and renderer class. Record time to the first visible window, process CPU
+   and memory during idle and continuous playback, and the delay from timeline
+   input to the corresponding frame. Record package extraction or launch steps.
+
+### Future macOS boundaries
+
+Keep native file ID and atomic, no-replace publication at the filesystem
+boundary. Test Unicode and normalization, APFS volume and mount behavior,
+and application-relative discovery of bundled FFmpeg, ffprobe, and libmpv.
+A future package must choose an executable/resource layout for a signed
+`.app`, bundle the platform and other required Qt plugins, and verify the
+preview context and fallback on supported hardware. Signing, notarization,
+and dependency/source inventory belong to that package workflow.

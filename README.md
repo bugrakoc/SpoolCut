@@ -2,7 +2,13 @@
 
 <img src="assets/io.github.bugrakoc.SpoolCut.png" alt="SpoolCut icon" width="96" height="96">
 
-Cut and join video without re-encoding. SpoolCut has a GTK desktop editor and a command-line tool. See the [Windows build and testing guide](docs/WINDOWS.md) for the Windows 11 port.
+Cut and join video without re-encoding. The `cpp-qt` branch builds a C++20/Qt 6 Widgets editor and CLI with a shared lossless export core.
+
+- [Build and run the Qt desktop and CLI](qt-prototype/README.md)
+- [Migration roadmap and acceptance criteria](ROADMAP_CPP_QT.md)
+- [Current CI, test packages and remaining checks](docs/CPP_QT_STATUS.md)
+
+The Rust/GTK editor and CLI remain available on this branch for parity testing. The Rust reference is pinned at [`39cb4ee`](https://github.com/bugrakoc/SpoolCut/tree/39cb4eecef8914f187871aac2187f8f023d14e0d). The commands below build that implementation. See the [Rust Windows build guide](docs/WINDOWS.md) for its portable package.
 
 ## Desktop editor
 
