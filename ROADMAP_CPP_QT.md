@@ -1,6 +1,6 @@
 # SpoolCut — C++ / Qt 6 migration roadmap
 
-Status: approved direction; prototype gate pending. This roadmap governs the experimental `cpp-qt` branch, not the existing Rust release line.
+Status: baseline audit recorded; prototype gate pending. See [migration evidence](docs/CPP_QT_STATUS.md) for the reference and test results.
 
 ## 1. Decision and scope
 
@@ -38,10 +38,10 @@ Use explicit ownership, RAII, standard containers and smart pointers where appro
 
 ### A — Baseline audit and regression inventory
 
-- [ ] Inspect current main, this branch, the merged Windows implementation and all source/test/build files; record exact reference SHAs and actual behavior, including known limitations. Check for newer main commits before beginning work; incorporate relevant fixes without rewriting branch history.
-- [ ] Inventory existing desktop and CLI features, supported media and errors. Capture reference test fixtures and results; preserve project JSON, source-relative paths, timestamp semantics and CLI contract.
-- [ ] Run available Rust tests and identify physical hardware/manual tests not possible in CI. Distinguish existing bugs from migration regressions.
-- [ ] Choose a supported Qt 6 baseline available to target platforms; document compiler/toolchain, architecture, dependencies and GPLv3/third-party license obligations.
+- [x] Inspect current main, this branch, the merged Windows implementation and all source/test/build files; record exact reference SHAs and actual behavior, including known limitations. Check for newer main commits before beginning work; incorporate relevant fixes without rewriting branch history.
+- [x] Inventory existing desktop and CLI features, supported media and errors. Capture reference test fixtures and results; preserve project JSON, source-relative paths, timestamp semantics and CLI contract.
+- [x] Run available Rust tests and identify physical hardware/manual tests not possible in CI. Distinguish existing bugs from migration regressions.
+- [x] Choose a supported Qt 6 baseline available to target platforms; document compiler/toolchain, architecture, dependencies and GPLv3/third-party license obligations.
 
 ### B — Qt feasibility prototype (hard gate before full rewrite)
 
