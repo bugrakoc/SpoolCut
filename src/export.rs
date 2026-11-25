@@ -181,7 +181,16 @@ pub fn export_with_progress(
             "-i",
         ])
         .arg(input)
-        .args(["-map", "0:v:0", "-map", "0:a:0"]);
+        .args([
+            "-map",
+            "0:v:0",
+            "-map",
+            "0:a:0",
+            "-disposition:v:0",
+            "default",
+            "-disposition:a:0",
+            "default",
+        ]);
     copy_output(&mut command, "matroska", &staged_output);
     process::run(&mut command, None, cancel).context("joining copied clips")?;
     progress(ExportProgress::Verifying);

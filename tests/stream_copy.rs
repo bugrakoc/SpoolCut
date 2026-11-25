@@ -285,15 +285,21 @@ fn sequence(
             "-v",
             "error",
             "-show_entries",
-            "format=duration",
+            "format=duration:stream_disposition=default",
             "-of",
-            "default=nw=1:nk=1",
+            "json",
             "-i",
         ])
         .arg(output));
-    let actual: f64 = String::from_utf8(result.stdout)
+    let info: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+    let streams = info["streams"].as_array().unwrap();
+    assert_eq!(streams.len(), 2);
+    for stream in streams {
+        assert_eq!(stream["disposition"]["default"], 1);
+    }
+    let actual: f64 = info["format"]["duration"]
+        .as_str()
         .unwrap()
-        .trim()
         .parse()
         .unwrap();
     assert!((actual - duration_us as f64 / 1_000_000.0).abs() < 0.002);

@@ -109,7 +109,7 @@ On Fedora, repeat the preview, editing and export checks in a Wayland session.
 | Windows chrome and DPI | Icons, native controls and dialogs scaled. The editor stayed at 100% when Windows was set to 150%, then scaled at 200%. Multiple displays were unavailable. |
 | Editing and preview | Unicode filenames, edits, shortcuts, playback through joins and paused source switches worked. Playback stuttered occasionally. |
 | Persistence and relink | Save, reopen and relink after renaming a missing source worked. A second drive was unavailable. The missing-source label was easy to overlook. |
-| Export | HEVC/AAC played as audio only in Windows Media Player Legacy and failed in Fedora players. VLC aborted. The cause is still open. H.264/AAC playback, cancellation and exFAT checks remain pending. |
+| Export | HEVC/AAC played as audio only in Windows Media Player Legacy and failed in Fedora players. VLC aborted. H.264/AAC playback, cancellation and exFAT checks remain pending. |
 | Renderer | Software preview worked both via Explorer and with the PowerShell OpenGL override. Hardware WGL remains unverified. |
 | Explorer drag-and-drop and title bar | Explorer drops did not import files. The native title and the project toolbar both showed the project name. |
 
@@ -117,6 +117,12 @@ The bundled GTK 4.24 Win32 backend uses whole-number scaling. The fractional
 monitor scaling work first appeared in the GTK 4.25.0 development release.
 Retest 150% and mixed-DPI displays once MSYS2 ships a stable build with
 [GTK's Win32 change](https://gitlab.gnome.org/GNOME/gtk/-/merge_requests/10405).
+
+The failed sample contained HEVC Main 10 video at 3840×2160 and 25 fps plus
+AAC stereo. FFmpeg software-decoded all 870 frames and the audio without
+errors, through both joins. Neither track was marked as default. New exports
+mark the single video and audio tracks as defaults. Test playback again on
+the affected systems to determine whether this resolves their failures.
 
 For a failed export, keep the MKV and project JSON. On a system with FFmpeg,
 these commands report the tracks and attempt to decode both streams.

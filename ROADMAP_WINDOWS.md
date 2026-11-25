@@ -47,8 +47,9 @@ The [first passing package build](https://github.com/bugrakoc/SpoolCut/actions/r
 - [x] Run the native Windows and Linux Wayland smoke tests in CI.
 - [ ] Repeat the editor and export tests on Fedora hardware.
 - [x] Record the [Windows VM checklist results](docs/WINDOWS.md#vm-results-for-the-first-portable-build-25-november-2026), including software preview fallback.
-- [ ] Diagnose the failed HEVC/AAC export from the VM and verify playback of a
-  fresh export. Release after verifying the remaining package checks.
+- [ ] Verify player compatibility for the VM's HEVC Main 10 sample after
+  marking both export tracks as defaults. FFmpeg software decoding passed on
+  the original sample. Release after verifying the remaining package checks.
 
 ## macOS foundations
 
