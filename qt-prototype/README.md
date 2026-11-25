@@ -54,3 +54,11 @@ matching source archive available alongside the binary if redistributing.
    and memory during 10 seconds of idle and continuous playback, and compare
    timeline input with the resulting frame. Note renderer/driver and package
    extraction or launch steps.
+
+## Fedora AppImage
+
+Make `SpoolCut-Qt-Fedora-x86_64.AppImage` executable, then open it on Fedora
+44 or newer. The AppImage is built with Debian 13's Qt and codec-enabled
+multimedia libraries and uses the Fedora host's graphics drivers. If user-mode
+FUSE is unavailable, run `./SpoolCut-Qt-Fedora-x86_64.AppImage --appimage-extract-and-run`.
+Keep the matching Linux source archive available if redistributing the AppImage.

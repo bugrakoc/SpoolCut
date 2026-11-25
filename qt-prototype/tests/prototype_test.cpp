@@ -4,6 +4,7 @@
 
 #include <QDir>
 #include <QFileInfo>
+#include <QOpenGLWidget>
 #include <QProcess>
 #include <QSignalSpy>
 #include <QStandardPaths>
@@ -84,7 +85,8 @@ private slots:
             }
 
             auto color = [&] {
-                const auto shot = window.preview()->grab().toImage();
+                auto *gl = window.preview()->findChild<QOpenGLWidget *>();
+                const auto shot = gl ? gl->grabFramebuffer() : window.preview()->grab().toImage();
                 return shot.pixelColor(shot.width() / 2, shot.height() / 2);
             };
             QTRY_VERIFY_WITH_TIMEOUT(color().red() > 180 && color().blue() < 70, 3000);
@@ -95,9 +97,12 @@ private slots:
                 window.resize(850 + i * 9, 570 + i * 4);
                 QTest::qWait(12);
             }
+            QSignalSpy positions(window.preview(), &Preview::positionChanged);
             window.scrub(5.25);
             QTRY_VERIFY_WITH_TIMEOUT(color().blue() > 180 && color().red() < 70, 10000);
-            QTRY_VERIFY_WITH_TIMEOUT(qAbs(window.preview()->position() - 1.25) < 0.12, 5000);
+            QTRY_VERIFY_WITH_TIMEOUT(!positions.isEmpty()
+                && qAbs(positions.last().at(0).toDouble() - 1.25) < 0.12, 5000);
+            QTest::qWait(160); // Allow the seek to settle on a decoded frame timestamp.
             const double paused = window.preview()->position();
             QTest::qWait(160);
             QCOMPARE(window.preview()->position(), paused);

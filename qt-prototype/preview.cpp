@@ -154,6 +154,7 @@ private:
         loading_ = true;
         loaded_ = false;
         loadingVersion_ = sourceVersion_;
+        activeEntry_.reset();
         timer_.start();
         // File paths are absolute and UTF-8, including on Windows. libmpv reads
         // its argument array directly, so no command-line quoting is involved.
@@ -228,7 +229,7 @@ private:
     std::optional<double> requested_;
     uint64_t sourceVersion_ = 0;
     uint64_t loadingVersion_ = 0;
-    int64_t activeEntry_ = 0;
+    std::optional<int64_t> activeEntry_;
     bool playing_ = false;
     bool loaded_ = false;
     bool loading_ = false;

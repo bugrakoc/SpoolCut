@@ -127,3 +127,62 @@ jobs:
           cmake -S qt-prototype -B build-qt-asan -G Ninja -DCMAKE_BUILD_TYPE=Debug -DSPOOLCUT_SANITIZERS=ON
           cmake --build build-qt-asan
           ctest --test-dir build-qt-asan -V -R '^prototype-software$'
+
+  appimage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Build AppImage and gather corresponding source
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src debian:trixie bash -euxc '
+            apt-get update
+            apt-get install -y --no-install-recommends ca-certificates curl git g++ cmake ninja-build pkg-config python3 \
+              qt6-base-dev qt6-wayland libmpv-dev ffmpeg squashfs-tools zstd
+            sed -e "s/^Types: deb$/Types: deb-src/" /etc/apt/sources.list.d/debian.sources \
+              > /etc/apt/sources.list.d/debian-source.sources
+            apt-get update
+            git config --global --add safe.directory /src
+            cmake -S qt-prototype -B build-qt-package -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
+            cmake --build build-qt-package
+            python3 qt-prototype/package-linux.py build-qt-package/spoolcut-qt dist-qt-linux
+          '
+      - name: Run relocated AppImage with Fedora 44 Wayland
+        run: |
+          docker run --rm -v "$PWD:/src:ro" -w /src fedora:44 bash -euxc '
+            dnf install -y weston mesa-dri-drivers libglvnd-egl libglvnd-glx libglvnd-opengl \
+              mesa-libgbm libdrm vulkan-loader libwayland-client libwayland-cursor libwayland-egl \
+              dejavu-sans-fonts xkeyboard-config
+            export XDG_RUNTIME_DIR="$(mktemp -d)"
+            export QT_QPA_PLATFORM=wayland WAYLAND_DISPLAY=spoolcut-fedora LIBGL_ALWAYS_SOFTWARE=1
+            weston --backend=headless --renderer=gl --shell=kiosk-shell.so \
+              --socket="$WAYLAND_DISPLAY" --width=1280 --height=900 --idle-time=0 --no-config \
+              >/tmp/weston.log 2>&1 &
+            compositor=$!
+            trap "kill $compositor 2>/dev/null || true; cat /tmp/weston.log" EXIT
+            for attempt in {1..70}; do
+              if test -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"; then break; fi
+              kill -0 "$compositor"
+              sleep 0.1
+            done
+            test -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
+            bash qt-prototype/tests/smoke-appimage.sh dist-qt-linux/SpoolCut-Qt-Fedora-x86_64.AppImage
+          '
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SpoolCut-Qt-Fedora-x86_64
+          path: |
+            dist-qt-linux/*.AppImage
+            dist-qt-linux/*.AppImage.sha256
+          compression-level: 0
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SpoolCut-Qt-Linux-sources
+          path: |
+            dist-qt-linux/*.tar.zst
+            dist-qt-linux/*.tar.zst.sha256
+          compression-level: 0
+          if-no-files-found: error
