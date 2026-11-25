@@ -67,6 +67,7 @@ jobs:
           update: true
           install: >-
             git
+            gnupg
             tar
             zstd
             mingw-w64-ucrt-x86_64-gcc
@@ -118,7 +119,7 @@ jobs:
       - name: Smoke test the relocated portable ZIP
         if: github.event_name == 'pull_request' || startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
-        run: packaging/windows/smoke-package.ps1
+        run: ./packaging/windows/smoke-package.ps1
       - uses: actions/upload-artifact@v4
         if: github.event_name == 'pull_request' || startsWith(github.ref, 'refs/tags/v')
         with:

@@ -42,7 +42,7 @@ def package_database(msys):
     return packages
 
 
-def copy_runtime(prefix, bundle, release):
+def copy_runtime(prefix, bundle, release, files):
     bin_dir = bundle / "bin"
     bin_dir.mkdir(parents=True)
     roots = [
@@ -59,6 +59,7 @@ def copy_runtime(prefix, bundle, release):
         roots.append((query_loaders, bin_dir / query_loaders.name))
 
     packages = set()
+    owners = {path: package for package, paths in files.items() for path in paths}
     known_dlls = {p.name.lower(): p for p in (prefix / "bin").glob("*.dll")}
     pending = deque(roots)
     copied = set()
@@ -70,8 +71,7 @@ def copy_runtime(prefix, bundle, release):
         shutil.copy2(source, target)
         copied.add(target)
         if source.is_relative_to(prefix):
-            msys_path = "/ucrt64/" + source.relative_to(prefix).as_posix()
-            packages.add(run("pacman", "-Qoq", msys_path, capture=True).decode().strip())
+            packages.add(owners[source.relative_to(prefix).as_posix()])
         imports = run("objdump", "-p", str(source), capture=True).decode(errors="replace")
         for name in re.findall(r"DLL Name:\s+(\S+)", imports, re.IGNORECASE):
             lower = name.lower()
@@ -89,7 +89,7 @@ def copy_runtime(prefix, bundle, release):
     for package in ("gtk4", "glib2", "fontconfig", "adwaita-icon-theme", "hicolor-icon-theme"):
         owner = UCRT + package
         packages.add(owner)
-        for path in installed_files(owner):
+        for path in files[owner]:
             if path.startswith((
                 "share/icons/", "share/glib-2.0/schemas/", "share/gtk-4.0/",
                 "share/locale/", "etc/fonts/",
@@ -105,10 +105,14 @@ def copy_runtime(prefix, bundle, release):
     return packages
 
 
-def installed_files(package):
-    for path in run("pacman", "-Qlq", package, capture=True).decode().splitlines():
+def installed_files():
+    files = {}
+    listing = run("pacman", "-Ql", capture=True).decode()
+    for line in listing.splitlines():
+        package, path = line.split(maxsplit=1)
         if path.startswith("/ucrt64/") and not path.endswith("/"):
-            yield path.removeprefix("/ucrt64/")
+            files.setdefault(package, []).append(path.removeprefix("/ucrt64/"))
+    return files
 
 
 def copy_file(prefix, path, destination):
@@ -138,7 +142,27 @@ def download_source(name, directory):
                 time.sleep(2 ** attempt)
 
 
-def write_archives(prefix, bundle, sources, output, packages):
+def verify_sources(msys, directory, filenames):
+    # Verify against the MSYS2 keyring installed by pacman without changing
+    # its trust database or relying on access to its private key directory.
+    keyring = msys / "usr/share/pacman/keyrings"
+    revoked = set((keyring / "msys2-revoked").read_text().split())
+    verifier = str(msys / "usr/bin/gpgv.exe")
+    public_keys = (keyring / "msys2.gpg").as_posix()
+    with tempfile.TemporaryDirectory(prefix="spoolcut-gpg-") as home:
+        for name in filenames:
+            archive = directory / name
+            signature = archive.with_name(name + ".sig")
+            status = run(verifier, "--homedir", Path(home).as_posix(), "--keyring",
+                         public_keys, "--status-fd", "1", signature.as_posix(),
+                         archive.as_posix(), capture=True).decode()
+            valid = [line.split() for line in status.splitlines()
+                     if line.startswith("[GNUPG:] VALIDSIG ")]
+            if not valid or any(fields[2] in revoked or fields[-1] in revoked for fields in valid):
+                raise RuntimeError(f"Invalid or revoked MSYS2 signature: {name}")
+
+
+def write_archives(prefix, bundle, sources, output, packages, files):
     msys = prefix.parent
     database = package_database(msys)
     versions = dict(
@@ -147,8 +171,8 @@ def write_archives(prefix, bundle, sources, output, packages):
     )
     inventory = ["Package\tVersion\tLicenses\tBinary SHA-256\tBinary package\tCorresponding source\n"]
     filenames = set()
-    # Rust's standard library is linked into the application executables.
-    packages.add(UCRT + "rust")
+    # The executables also link the Rust standard library and MinGW CRT.
+    packages.update((UCRT + "rust", UCRT + "crt"))
     for package in sorted(packages):
         record = database[package]
         version = versions[package]
@@ -161,7 +185,7 @@ def write_archives(prefix, bundle, sources, output, packages):
             f"{package}\t{version}\t{license_ids}\t{record['SHA256SUM']}\t"
             f"{MSYS2}/ucrt64/{urllib.parse.quote(record['FILENAME'])}\t{source_url(name)}\n"
         )
-        for path in installed_files(package):
+        for path in files[package]:
             if path.startswith("share/licenses/"):
                 copy_file(prefix, path, bundle)
 
@@ -174,13 +198,7 @@ def write_archives(prefix, bundle, sources, output, packages):
     print(f"Collected {len(packages)} runtime package records. Downloading {len(filenames)} source archives.", flush=True)
     with ThreadPoolExecutor(max_workers=6) as pool:
         list(pool.map(lambda name: download_source(name, native_sources), filenames))
-    # Use MSYS2 Bash explicitly. Windows may resolve an unqualified bash.exe
-    # to the WSL launcher before consulting PATH.
-    bash = str(msys / "usr/bin/bash.exe")
-    for name in filenames:
-        archive = native_sources / name
-        run(bash, "/usr/bin/pacman-key", "--verify",
-            archive.with_name(name + ".sig").as_posix(), archive.as_posix())
+    verify_sources(msys, native_sources, filenames)
 
     # Include the tracked source at this exact revision and locked Rust dependencies.
     run("git", "archive", "--format=tar", "-o", str(sources / "SpoolCut-source.tar"), "HEAD")
@@ -235,8 +253,9 @@ def main():
         bundle = workspace / "SpoolCut"
         sources = workspace / "SpoolCut-Windows-sources"
         sources.mkdir()
-        packages = copy_runtime(args.prefix, bundle, Path("target/release"))
-        write_archives(args.prefix, bundle, sources, output, packages)
+        files = installed_files()
+        packages = copy_runtime(args.prefix, bundle, Path("target/release"), files)
+        write_archives(args.prefix, bundle, sources, output, packages, files)
 
 
 if __name__ == "__main__":
