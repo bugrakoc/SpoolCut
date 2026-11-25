@@ -148,8 +148,10 @@ def verify_sources(msys, directory, filenames):
     keyring = msys / "usr/share/pacman/keyrings"
     revoked = set((keyring / "msys2-revoked").read_text().split())
     verifier = str(msys / "usr/bin/gpgv.exe")
-    public_keys = (keyring / "msys2.gpg").as_posix()
     with tempfile.TemporaryDirectory(prefix="spoolcut-gpg-") as home:
+        public_keys = (Path(home) / "msys2.gpg").as_posix()
+        run(str(msys / "usr/bin/gpg.exe"), "--batch", "--homedir", Path(home).as_posix(),
+            "--dearmor", "--output", public_keys, (keyring / "msys2.gpg").as_posix())
         for name in filenames:
             archive = directory / name
             signature = archive.with_name(name + ".sig")
