@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "detail.h"
 
-#include <QDir>
-
 #include <algorithm>
 
 using namespace Qt::StringLiterals;
@@ -93,7 +91,7 @@ Prepared prepare(const Project &project, const QString &root, const Cancel &canc
             if (source == result.sources.end()) {
                 const auto location = project.sources.find(clip.source);
                 require(location != project.sources.end(), u"unknown source"_s);
-                const auto path = QDir(root).filePath(location->second);
+                const auto path = rootedPath(root, location->second);
                 auto media = context(u"inspecting %1"_s.arg(path), [&] { return Media::open(path, cancel); });
                 if (!result.plan.clips.empty()) {
                     const auto &reference = result.sources.at(result.plan.clips.front().clip.source);

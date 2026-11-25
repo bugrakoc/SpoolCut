@@ -229,6 +229,19 @@ def rejected(root, clis):
         run(cli, "inspect", root / "missing.mp4", failure="inspecting")
     assert not list(root.glob(".spoolcut-*"))
 
+    if os.name != "nt":
+        child = root / "subdirectory"
+        child.mkdir()
+        link_home = root / "outside"
+        link_home.mkdir()
+        link = link_home / "alias"
+        link.symlink_to(child, target_is_directory=True)
+        via_parent = link / ".."
+        assert unanimous(clis, "inspect", via_parent / other.name) == other_info
+        assert unanimous(clis, "plan", via_parent / project.name) == unanimous(clis, "plan", project)
+        run(clis[0], "export", via_parent / project.name, via_parent / output.name)
+        assert output.is_file() and not (link_home / output.name).exists()
+
 
 @contextlib.contextmanager
 def interrupt_process(child):

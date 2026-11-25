@@ -212,7 +212,7 @@ Media Media::open(const QString &input, const Cancel &cancel)
 {
     checkCancelled(cancel);
     const auto path = canonicalPath(input);
-    const auto sourcePath = QFileInfo(input).absoluteFilePath();
+    const auto sourcePath = absolutePath(input);
     require(QFileInfo(path).isFile(), u"source must be a regular file"_s);
     QFile file(path);
     const bool opened = file.open(QIODevice::ReadOnly);

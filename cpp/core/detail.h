@@ -40,6 +40,8 @@ qint64 micros(TimeBase base, Wide ticks);
 QString ffmpegTime(qint64 value);
 void checkCancelled(const Cancel &cancel);
 
+QString absolutePath(const QString &path);
+QString rootedPath(const QString &root, const QString &path);
 QString canonicalPath(const QString &path);
 QString mediaPath(const QString &path);
 void publish(const QString &staged, const QString &destination);

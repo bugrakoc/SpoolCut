@@ -204,7 +204,7 @@ void exportProject(const Project &project, const QString &root, const QString &o
     require(!outputInfo.exists() && !outputInfo.isSymbolicLink(), u"output already exists: %1"_s.arg(output));
     notify({ExportStage::Planning});
     const auto prepared = prepare(project, root, cancel);
-    const auto parent = canonicalPath(outputInfo.absolutePath());
+    const auto parent = canonicalPath(projectDirectory(output));
     const auto destination = QDir(parent).filePath(outputInfo.fileName());
     const QTemporaryDir workspace(QDir(parent).filePath(u".spoolcut-XXXXXX"_s));
     require(workspace.isValid(), u"creating temporary files in %1: %2"_s.arg(parent, workspace.errorString()));

@@ -186,7 +186,7 @@ void Project::save(const QString &path) const
                 QFile::remove(stagedPath);
         });
         {
-            QTemporaryFile staged(QDir(QFileInfo(path).absolutePath()).filePath(
+            QTemporaryFile staged(QDir(detail::canonicalPath(projectDirectory(path))).filePath(
                 QStringLiteral(".spoolcut-project-XXXXXX")));
             const bool opened = staged.open();
             detail::require(opened, staged.errorString());
@@ -199,6 +199,16 @@ void Project::save(const QString &path) const
         }
         detail::replaceProject(stagedPath, path);
     });
+}
+
+QString projectDirectory(const QString &projectFile)
+{
+    const auto path = QDir::fromNativeSeparators(detail::absolutePath(projectFile));
+    const auto slash = path.lastIndexOf(QLatin1Char('/'));
+    // Include the slash for a filesystem root (including C:/).
+    if (slash == 0 || (slash == 2 && path[1] == QLatin1Char(':')))
+        return path.left(slash + 1);
+    return path.left(slash);
 }
 
 QString projectSourcePath(const QString &root, const QString &path)

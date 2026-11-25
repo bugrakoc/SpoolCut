@@ -104,6 +104,9 @@ ExportPlan plan(const Project &project, const QString &root, const Cancel &cance
 void exportProject(const Project &project, const QString &root, const QString &output,
                    const Cancel &cancel, const std::function<void(ExportProgress)> &progress = {});
 
+// Retain parent components that can resolve through a symbolic link.
+QString projectDirectory(const QString &projectFile);
+
 // Store paths relative to the project directory when the two locations share a root.
 QString projectSourcePath(const QString &root, const QString &path);
 

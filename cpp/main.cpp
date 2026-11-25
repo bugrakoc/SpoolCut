@@ -2,7 +2,6 @@
 #include "spoolcut.h"
 
 #include <QCoreApplication>
-#include <QFileInfo>
 #include <QJsonDocument>
 
 #include <csignal>
@@ -62,7 +61,7 @@ int main(int argc, char **argv)
         } else if ((args.size() == 2 && args[0] == QStringLiteral("plan")) ||
                    (args.size() == 3 && args[0] == QStringLiteral("export"))) {
             const auto project = spoolcut::Project::load(args[1]);
-            const auto root = QFileInfo(args[1]).absolutePath();
+            const auto root = spoolcut::projectDirectory(args[1]);
             if (args.size() == 2)
                 printJson(spoolcut::plan(project, root, cancelled).json());
             else

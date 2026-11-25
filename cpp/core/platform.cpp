@@ -55,6 +55,24 @@ bool executable(const QString &path)
 
 } // namespace
 
+QString rootedPath(const QString &root, const QString &path)
+{
+    if (QDir::isAbsolutePath(path) || root.isEmpty())
+        return path;
+    return root.endsWith(QLatin1Char('/')) ? root + path : root + QLatin1Char('/') + path;
+}
+
+QString absolutePath(const QString &path)
+{
+    validPath(path);
+#ifdef Q_OS_WIN
+    return QFileInfo(path).absoluteFilePath();
+#else
+    // The OS must resolve ".." after following any preceding symbolic link.
+    return rootedPath(QDir::currentPath(), path);
+#endif
+}
+
 QString canonicalPath(const QString &path)
 {
     validPath(path);
