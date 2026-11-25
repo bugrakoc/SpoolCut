@@ -1,9 +1,8 @@
 use std::{
     collections::{BTreeMap, HashSet},
-    fs::{self, File, Metadata},
+    fs::File,
     io::{BufReader, Read, Seek, SeekFrom},
     path::{Path, PathBuf},
-    process::Command,
     sync::atomic::AtomicBool,
 };
 
@@ -11,7 +10,7 @@ use anyhow::{Context, Result, bail, ensure};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
 
-use crate::{TimeBase, process};
+use crate::{TimeBase, filesystem::SourceIdentity, process};
 
 const STREAM_FIELDS: &str = "stream=index,codec_type,codec_name,codec_tag_string,profile,level,width,height,pix_fmt,field_order,color_space,color_range,color_transfer,color_primaries,chroma_location,sample_aspect_ratio,sample_fmt,sample_rate,channels,channel_layout,extradata,time_base,avg_frame_rate:stream_disposition=attached_pic:stream_side_data=side_data_type";
 const PACKET_FIELDS: &str =
@@ -34,7 +33,8 @@ pub struct MediaInfo {
 
 pub(crate) struct Media {
     pub path: PathBuf,
-    metadata: Metadata,
+    source_path: PathBuf,
+    identity: SourceIdentity,
     pub video: Stream,
     pub audio: Stream,
     pub video_base: TimeBase,
@@ -117,9 +117,10 @@ enum VideoCodec {
 
 impl Media {
     pub(crate) fn open(path: &Path, cancel: &AtomicBool) -> Result<Self> {
-        let path = path.canonicalize()?;
-        let metadata = fs::metadata(&path)?;
-        ensure!(metadata.is_file(), "source must be a regular file");
+        let source_path = std::path::absolute(path)?;
+        let path = source_path.canonicalize()?;
+        let mut file = File::open(&path)?;
+        let identity = SourceIdentity::read(&file)?;
         let Streams { streams } = probe(
             &path,
             "mov",
@@ -183,7 +184,6 @@ impl Media {
         validate_timestamps(&video_packets, false)?;
         validate_timestamps(&audio_packets, true)?;
 
-        let mut file = File::open(&path)?;
         let config = decode_extradata(video.parameter("extradata")?)?;
         let length_offset = match codec {
             VideoCodec::H264 => 4,
@@ -204,7 +204,8 @@ impl Media {
             index_cuts(&video_packets, &mut file, codec, length_bytes, cancel)?;
         let media = Self {
             path,
-            metadata,
+            source_path,
+            identity,
             video,
             audio,
             video_base,
@@ -220,22 +221,13 @@ impl Media {
     }
 
     pub(crate) fn check_source(&self) -> Result<()> {
-        let current = fs::metadata(&self.path)?;
+        let current = File::open(&self.source_path)
+            .with_context(|| format!("checking source {}", self.source_path.display()))?;
         ensure!(
-            self.metadata.len() == current.len()
-                && self.metadata.modified()? == current.modified()?,
-            "source changed during operation: {}",
-            self.path.display()
+            self.identity == SourceIdentity::read(&current)?,
+            "source changed or was replaced during operation: {}",
+            self.source_path.display()
         );
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::MetadataExt;
-            ensure!(
-                self.metadata.ino() == current.ino() && self.metadata.dev() == current.dev(),
-                "source was replaced during operation: {}",
-                self.path.display()
-            );
-        }
         Ok(())
     }
 }
@@ -422,7 +414,7 @@ pub(crate) fn probe<T: DeserializeOwned>(
     cancel: &AtomicBool,
 ) -> Result<T> {
     let mut output = tempfile::tempfile()?;
-    let mut command = Command::new("ffprobe");
+    let mut command = process::tool("ffprobe")?;
     command
         .args(["-v", "error", "-protocol_whitelist", "file", "-f", format])
         .args(options)

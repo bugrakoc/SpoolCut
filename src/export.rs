@@ -1,10 +1,5 @@
 use std::{
-    collections::BTreeMap,
-    fs::{self, File},
-    io::Write,
-    ops::Range,
-    path::Path,
-    process::Command,
+    collections::BTreeMap, fs::File, io::Write, ops::Range, path::Path, process::Command,
     sync::atomic::AtomicBool,
 };
 
@@ -12,7 +7,7 @@ use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    Clip, MediaInfo, Project,
+    Clip, MediaInfo, Project, filesystem,
     media::{Media, Packet, Stream, media_info, probe, read_packets},
     process,
     time::{TimeBase, ffmpeg_time},
@@ -124,9 +119,11 @@ pub fn export_with_progress(
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or(Path::new("."));
+    let parent = parent.canonicalize()?;
+    let destination = parent.join(output.file_name().context("missing output filename")?);
     let workspace = tempfile::Builder::new()
         .prefix(".spoolcut-")
-        .tempdir_in(parent)
+        .tempdir_in(&parent)
         .with_context(|| format!("creating temporary files in {}", parent.display()))?;
     // Absolute paths remain valid while the concat subprocess uses the temporary directory.
     let directory = workspace.path().canonicalize()?;
@@ -149,7 +146,7 @@ pub fn export_with_progress(
 
     progress(ExportProgress::Joining);
     let staged_output = directory.join("output.mkv");
-    let mut command = ffmpeg();
+    let mut command = ffmpeg()?;
     command.current_dir(&directory).args([
         "-protocol_whitelist",
         "file",
@@ -175,7 +172,7 @@ pub fn export_with_progress(
     }
     process::check(cancel)?;
     // Publish on the same filesystem, atomically and without overwriting an existing path.
-    fs::hard_link(&staged_output, output)
+    filesystem::publish(&staged_output, &destination)
         .with_context(|| format!("publishing {}", output.display()))?;
     Ok(())
 }
@@ -319,8 +316,8 @@ fn plan_audio(media: &Media, clip: &Clip) -> Result<Range<usize>> {
     Ok(start..end)
 }
 
-fn ffmpeg() -> Command {
-    let mut command = Command::new("ffmpeg");
+fn ffmpeg() -> Result<Command> {
+    let mut command = process::tool("ffmpeg")?;
     command.args([
         "-nostdin",
         "-hide_banner",
@@ -329,7 +326,7 @@ fn ffmpeg() -> Command {
         "-xerror",
         "-n",
     ]);
-    command
+    Ok(command)
 }
 
 fn mkv_output(command: &mut Command, output: &Path) {
@@ -353,7 +350,7 @@ fn write_clip(media: &Media, clip: &PlannedClip, output: &Path, cancel: &AtomicB
     let offset = media.video_base.micros(-i128::from(clip.in_pts))?;
     let select =
         |range: &Range<usize>| format!("noise=drop=lt(n\\,{})+gte(n\\,{})", range.start, range.end);
-    let mut command = ffmpeg();
+    let mut command = ffmpeg()?;
     // The bitstream filter counts demuxed packets independently for each mapped stream.
     // Timestamp seeking can select a different packet at the same nominal cut time.
     command
