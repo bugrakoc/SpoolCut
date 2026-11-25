@@ -135,7 +135,7 @@ pub fn export_with_progress(
             completed: index,
             total: plan.clips.len(),
         });
-        let name = format!("{index}.mkv");
+        let name = format!("{index}.mp4");
         let media = &sources[&clip.source];
         media.check_source()?;
         write_clip(media, clip, &directory.join(&name), cancel)
@@ -181,15 +181,8 @@ pub fn export_with_progress(
             "-i",
         ])
         .arg(input)
-        .args([
-            "-map",
-            "0:v:0",
-            "-map",
-            "0:a:0",
-            "-bsf:a",
-            &aac_duration(&sources[&plan.clips[0].source]),
-        ]);
-    mkv_output(&mut command, &staged_output);
+        .args(["-map", "0:v:0", "-map", "0:a:0"]);
+    copy_output(&mut command, "matroska", &staged_output);
     process::run(&mut command, None, cancel).context("joining copied clips")?;
     progress(ExportProgress::Verifying);
     verify(&staged_output, &plan, &sources, cancel).context("verifying joined output")?;
@@ -355,7 +348,7 @@ fn ffmpeg() -> Result<Command> {
     Ok(command)
 }
 
-fn mkv_output(command: &mut Command, output: &Path) {
+fn copy_output(command: &mut Command, format: &str, output: &Path) {
     command
         .args([
             "-c",
@@ -367,7 +360,7 @@ fn mkv_output(command: &mut Command, output: &Path) {
             "-avoid_negative_ts",
             "disabled",
             "-f",
-            "matroska",
+            format,
         ])
         .arg(output);
 }
@@ -401,23 +394,19 @@ fn write_clip(media: &Media, clip: &PlannedClip, output: &Path, cancel: &AtomicB
             "-bsf:v",
             &select(&clip.video_packets),
             "-bsf:a",
-            &format!("{},{}", select(&clip.audio_packets), aac_duration(media)),
+            &select(&clip.audio_packets),
         ]);
-    mkv_output(&mut command, output);
+    // MP4 keeps the selected packets without copying the source AAC priming
+    // into a Matroska CodecDelay. The priming packets have already been excluded.
+    // Use a common track time base for concat, even when sources differ.
+    command.args([
+        "-movie_timescale",
+        "1000000",
+        "-video_track_timescale",
+        "1000000",
+    ]);
+    copy_output(&mut command, "mp4", output);
     process::run(&mut command, None, cancel)
-}
-
-fn aac_duration(media: &Media) -> String {
-    // Every selected AAC-LC packet is a complete frame. Set its duration in
-    // the current time base so FFmpeg cannot infer a longer Matroska tail.
-    let TimeBase {
-        numerator,
-        denominator,
-    } = media.audio_base;
-    format!(
-        "setts=duration=round({}*{numerator}/{denominator}/TB)",
-        media.audio_frame_ticks
-    )
 }
 
 #[derive(Deserialize)]
@@ -470,7 +459,7 @@ fn verify(
                     + i128::from(clip.timeline_start_us);
                 let actual_us = MKV_TIME_BASE
                     .micros(i128::from(output.pts.context("output packet has no PTS")?))?;
-                // The intermediate and final Matroska muxes round to millisecond ticks.
+                // The final Matroska mux rounds to millisecond ticks.
                 ensure!(
                     (expected_us - i128::from(actual_us)).abs() <= 1_001,
                     "{label} timestamp changed in clip {} (expected {} µs, got {} µs)",
@@ -479,7 +468,9 @@ fn verify(
                     actual_us
                 );
                 ensure!(
-                    output.size == packet.size && output.is_key() == packet.is_key(),
+                    output.usable()
+                        && output.size == packet.size
+                        && output.is_key() == packet.is_key(),
                     "{label} packet framing changed in clip {}",
                     index + 1
                 );
