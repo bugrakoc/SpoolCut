@@ -1,0 +1,12 @@
+SpoolCut for Windows 11 x86-64
+
+Extract the entire ZIP. Open bin\SpoolCut.exe to use the editor, or run
+bin\spoolcut-cli.exe from a terminal for the command-line tool. Keep the bin,
+lib and share folders together. FFmpeg and ffprobe ship in the bin folder.
+
+SpoolCut is licensed under GPL version 3. See LICENSE and share\licenses
+for notices. MSYS2-packages.tsv identifies the native packages in this build.
+The accompanying SpoolCut-Windows-sources.tar.zst contains the exact SpoolCut
+revision, Cargo dependencies, and corresponding MSYS2 source archives.
+
+Build and verification instructions are in docs\WINDOWS.md in the source.

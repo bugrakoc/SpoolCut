@@ -12,9 +12,9 @@ Non-goals: new editing features, new codecs or containers, smart rendering, tran
 
 ## 2. Baseline and branch policy
 
-- Rust reference: [main at 3efebcf](https://github.com/bugrakoc/SpoolCut/tree/3efebcf9c94fc22d8b8ec7cb5b656a0e620c7938). The branch starts from this commit, which remains available in Git history.
-- Windows reference: [draft PR #3](https://github.com/bugrakoc/SpoolCut/pull/3), head at planning time `4082414003ef2a78794a32d821baeee6971eb596`. Inspect its latest state, `ROADMAP_WINDOWS.md`, CI, tests and packaging; carry forward relevant behavior and fixes, not GTK-specific workarounds. The Windows PR is not merged at the time of planning.
-- All migration work goes to `cpp-qt`. Do not change main, force-push, merge or close PR #3, change the license, or publish releases without maintainer approval.
+- Rust reference: [main at 39cb4ee](https://github.com/bugrakoc/SpoolCut/tree/39cb4eecef8914f187871aac2187f8f023d14e0d), including the merged Windows port. The `cpp-qt` branch incorporates this baseline; keep this exact commit available for differential testing.
+- Windows reference: [PR #3](https://github.com/bugrakoc/SpoolCut/pull/3) was merged into main on 25 November 2026 at `39cb4eecef8914f187871aac2187f8f023d14e0d`. Audit the integrated implementation, [ROADMAP_WINDOWS.md](ROADMAP_WINDOWS.md), [docs/WINDOWS.md](docs/WINDOWS.md), CI, tests and packaging. Preserve relevant behavior and fixes, not GTK-specific workarounds. No separate Windows-branch merge is needed. Merged does not mean all manual checks passed: accelerated preview, fractional DPI scaling, outstanding package tests and HEVC Main 10 player compatibility remain baseline verification items.
+- All migration work goes to `cpp-qt`. Do not change main, force-push, merge the migration into main, change the license, or publish releases without maintainer approval.
 - Keep the Rust code and fixtures runnable as a behavioral reference until parity is demonstrated. Temporary coexistence is for validation only, not a permanent dual-language architecture. Preserve history; remove obsolete Rust/GTK build paths from the replacement branch only at the final cleanup checkpoint.
 - Document actual commits, toolchain versions, tests, platform results and unresolved issues in this file or a linked migration status file. Mark a checkbox complete only with evidence.
 
@@ -38,7 +38,7 @@ Use explicit ownership, RAII, standard containers and smart pointers where appro
 
 ### A — Baseline audit and regression inventory
 
-- [ ] Inspect current main, this branch, PR #3 and all source/test/build files; record exact reference SHAs and actual behavior, including known limitations.
+- [ ] Inspect current main, this branch, the merged Windows implementation and all source/test/build files; record exact reference SHAs and actual behavior, including known limitations. Check for newer main commits before beginning work; incorporate relevant fixes without rewriting branch history.
 - [ ] Inventory existing desktop and CLI features, supported media and errors. Capture reference test fixtures and results; preserve project JSON, source-relative paths, timestamp semantics and CLI contract.
 - [ ] Run available Rust tests and identify physical hardware/manual tests not possible in CI. Distinguish existing bugs from migration regressions.
 - [ ] Choose a supported Qt 6 baseline available to target platforms; document compiler/toolchain, architecture, dependencies and GPLv3/third-party license obligations.
@@ -55,7 +55,7 @@ Use explicit ownership, RAII, standard containers and smart pointers where appro
 ### C — Port and verify the core
 
 - [ ] Reimplement the existing algorithms, not a simplified approximation; keep project model, probe/index, timestamp math, compatibility validation, planning, export, verification and process/file handling separable.
-- [ ] Preserve accepted inputs (currently compatible MP4/MOV H.264/HEVC video and AAC-LC audio), stream selection, decoder-configuration checks, closed IDR and presentation-order constraints, exclusive out points, full AAC packet selection, existing timestamp tolerances and explicit unsupported-media errors. Confirm details against baseline and Windows branch.
+- [ ] Preserve accepted inputs (currently compatible MP4/MOV H.264/HEVC video and AAC-LC audio), stream selection, decoder-configuration checks, closed IDR and presentation-order constraints, exclusive out points, full AAC packet selection, existing timestamp tolerances and explicit unsupported-media errors. Confirm details against the integrated Linux/Windows baseline, including the HEVC Main 10 export/player compatibility case and default track dispositions.
 - [ ] Preserve the stream-copy staging/join/verification pipeline, cancellation, safe cleanup, destination no-overwrite and atomic publication. Maintain Unicode/space/long-path and source identity behavior across OSes. Clearly reject unsupported filesystems or unsafe publication cases; do not silently weaken guarantees.
 - [ ] Keep project JSON schema, relative paths and integer PTS exact; load reference projects in both implementations and compare plan results. Preserve CLI inspect/plan/export, error handling and exit behavior.
 - [ ] Port existing unit/integration tests and generated fixtures. Differentially compare reference and C++ plans, accepted/rejected cut points, video/audio payload hashes where framing permits, decoded frame order, duration, A/V offsets and cancellation behavior. Cover B-frames, fractional/VFR time bases, repeated A-B-A ranges, mismatched streams, destination races and failures. No reliance on output file byte equality when muxer metadata differs.

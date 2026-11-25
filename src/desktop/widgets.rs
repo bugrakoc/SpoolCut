@@ -1,6 +1,8 @@
-use gtk::{cairo, gdk, glib, prelude::*};
+#[cfg(not(windows))]
+use gtk::cairo;
+use gtk::{gdk, glib, prelude::*};
 
-use crate::{APPLICATION_ID, launcher::APP_ICON, timeline::Timeline};
+use crate::{APP_ICON, APPLICATION_ID, timeline::Timeline};
 
 pub struct Widgets {
     pub window: gtk::ApplicationWindow,
@@ -8,6 +10,7 @@ pub struct Widgets {
     pub software_canvas: gtk::Picture,
     pub preview_stack: gtk::Stack,
     pub placeholder: gtk::Label,
+    pub media_bin: gtk::Box,
     pub media: gtk::ListBox,
     pub timeline: Timeline,
     pub zoom_out: gtk::Button,
@@ -42,6 +45,14 @@ impl Widgets {
             .default_width(1120)
             .default_height(760)
             .build();
+        let icon_texture = gdk::Texture::from_bytes(&glib::Bytes::from_static(APP_ICON))
+            .expect("the embedded SpoolCut icon is a valid PNG");
+        let window_icon = icon_texture.clone();
+        window.connect_realize(move |window| {
+            if let Some(toplevel) = window.surface().and_downcast::<gdk::Toplevel>() {
+                toplevel.set_icon_list(std::slice::from_ref(&window_icon));
+            }
+        });
         let dark = gtk::Settings::default()
             .is_some_and(|settings| settings.is_gtk_application_prefer_dark_theme());
         let provider = gtk::CssProvider::new();
@@ -58,16 +69,18 @@ impl Widgets {
         let save_as = gtk::Button::with_label("Save As…");
         let export = gtk::Button::with_label("Export MKV…");
         export.add_css_class("suggested-action");
-        let header = gtk::HeaderBar::new();
-        header.set_show_title_buttons(false);
-        header.set_title_widget(Some(&window_title(&window)));
-        header.pack_start(&new);
-        header.pack_start(&open);
-        header.pack_start(&save);
-        header.pack_start(&save_as);
-        header.pack_end(&window_controls(&window));
-        header.pack_end(&export);
-        window.set_titlebar(Some(&header));
+        #[cfg(not(windows))]
+        {
+            let header = gtk::HeaderBar::new();
+            header.set_show_title_buttons(false);
+            header.set_title_widget(Some(&window_title(&window, &icon_texture)));
+            for button in [&new, &open, &save, &save_as] {
+                header.pack_start(button);
+            }
+            header.pack_end(&window_controls(&window));
+            header.pack_end(&export);
+            window.set_titlebar(Some(&header));
+        }
 
         let media = gtk::ListBox::new();
         media.add_css_class("boxed-list");
@@ -88,10 +101,10 @@ impl Widgets {
         let bin_footer = gtk::Box::new(gtk::Orientation::Horizontal, 6);
         bin_footer.append(&append);
         bin_footer.append(&relink);
-        let bin = gtk::Box::new(gtk::Orientation::Vertical, 10);
-        bin.append(&bin_header);
-        bin.append(&media_scroll);
-        bin.append(&bin_footer);
+        let media_bin = gtk::Box::new(gtk::Orientation::Vertical, 10);
+        media_bin.append(&bin_header);
+        media_bin.append(&media_scroll);
+        media_bin.append(&bin_footer);
 
         let canvas = gtk::GLArea::builder()
             .auto_render(false)
@@ -114,7 +127,11 @@ impl Widgets {
         let preview_stack = gtk::Stack::new();
         preview_stack.add_child(&canvas);
         preview_stack.add_child(&software_canvas);
-        preview_stack.set_visible_child(&canvas);
+        if crate::graphics::prefer_opengl() {
+            preview_stack.set_visible_child(&canvas);
+        } else {
+            preview_stack.set_visible_child(&software_canvas);
+        }
         video.set_child(Some(&preview_stack));
         video.add_overlay(&placeholder);
         let play = gtk::Button::with_label("Play");
@@ -133,7 +150,7 @@ impl Widgets {
         preview.append(&playback);
         let workspace = gtk::Paned::builder()
             .orientation(gtk::Orientation::Horizontal)
-            .start_child(&bin)
+            .start_child(&media_bin)
             .end_child(&preview)
             .resize_start_child(false)
             .shrink_start_child(false)
@@ -198,6 +215,18 @@ impl Widgets {
         content.set_margin_bottom(12);
         content.set_margin_start(14);
         content.set_margin_end(14);
+        #[cfg(windows)]
+        {
+            let project_buttons = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+            project_buttons.set_hexpand(true);
+            for button in [&new, &open, &save, &save_as] {
+                project_buttons.append(button);
+            }
+            let toolbar = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+            toolbar.append(&project_buttons);
+            toolbar.append(&export);
+            content.append(&toolbar);
+        }
         content.append(&workspace);
         content.append(&timeline_title);
         content.append(&timeline.area);
@@ -213,6 +242,7 @@ impl Widgets {
             software_canvas,
             preview_stack,
             placeholder,
+            media_bin,
             media,
             timeline,
             zoom_out,
@@ -254,22 +284,17 @@ impl Widgets {
 }
 
 #[derive(Clone, Copy)]
+#[cfg(not(windows))]
 enum WindowControl {
     Minimize,
     Maximize,
     Close,
 }
 
-fn window_title(window: &gtk::ApplicationWindow) -> gtk::Box {
-    let texture = gdk::Texture::from_bytes(&glib::Bytes::from_static(APP_ICON))
-        .expect("the embedded SpoolCut icon is a valid PNG");
-    let icon = gtk::Image::from_paintable(Some(&texture));
+#[cfg(not(windows))]
+fn window_title(window: &gtk::ApplicationWindow, texture: &gdk::Texture) -> gtk::Box {
+    let icon = gtk::Image::from_paintable(Some(texture));
     icon.set_pixel_size(26);
-    window.connect_realize(move |window| {
-        if let Some(toplevel) = window.surface().and_downcast::<gdk::Toplevel>() {
-            toplevel.set_icon_list(std::slice::from_ref(&texture));
-        }
-    });
     let label = gtk::Label::builder()
         .ellipsize(gtk::pango::EllipsizeMode::End)
         .build();
@@ -284,6 +309,7 @@ fn window_title(window: &gtk::ApplicationWindow) -> gtk::Box {
     title
 }
 
+#[cfg(not(windows))]
 fn window_controls(window: &gtk::ApplicationWindow) -> gtk::Box {
     let controls = gtk::Box::new(gtk::Orientation::Horizontal, 3);
     for (kind, label, action) in [
@@ -344,11 +370,13 @@ fn window_controls(window: &gtk::ApplicationWindow) -> gtk::Box {
     controls
 }
 
+#[cfg(not(windows))]
 fn label_window_button(button: &gtk::Button, label: &str) {
     button.set_tooltip_text(Some(label));
     button.update_property(&[gtk::accessible::Property::Label(label)]);
 }
 
+#[cfg(not(windows))]
 fn draw_window_glyph(cr: &cairo::Context, kind: WindowControl, maximized: bool) {
     cr.set_line_width(1.5);
     cr.set_line_cap(cairo::LineCap::Round);
@@ -402,6 +430,7 @@ pub fn files(dialog: &gtk::FileDialog, label: &str, patterns: &[&str]) {
 const CSS: &str = "
 .video-frame { background-color: #10151c; border-radius: 8px; }
 .preview-placeholder { color: #d0d9e4; }
+.media-unavailable { color: @error_color; font-weight: bold; }
 .media-workspace > separator {
     background: transparent;
     border: none;

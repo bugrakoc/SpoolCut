@@ -4,7 +4,7 @@ SpoolCut is a free, open-source desktop editor for cutting and joining video wit
 
 ## Release priorities
 
-- Target Fedora and Wayland first. Keep Windows and macOS as later ports.
+- Keep Fedora and Wayland as first-class targets. Add Windows 11 x86-64 and prepare for a future macOS port. See the [Windows roadmap](ROADMAP_WINDOWS.md).
 - Use Rust, GTK 4 through `gtk4-rs`, libmpv for preview, and FFmpeg and ffprobe for media inspection and export.
 - Keep timeline edits, project persistence, and export planning independent of GTK and libmpv. Keep the codebase small enough for one maintainer.
 

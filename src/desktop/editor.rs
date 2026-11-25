@@ -76,7 +76,16 @@ impl Editor {
         let mut portable = self.project.clone();
         for source in portable.sources.values_mut() {
             if let Ok(relative) = source.strip_prefix(root) {
-                *source = relative.to_owned();
+                #[cfg(not(windows))]
+                let relative = relative.to_owned();
+                #[cfg(windows)]
+                let relative = PathBuf::from(
+                    relative
+                        .to_str()
+                        .context("Project paths must be Unicode")?
+                        .replace('\\', "/"),
+                );
+                *source = relative;
             }
         }
         portable.save(&path)?;
