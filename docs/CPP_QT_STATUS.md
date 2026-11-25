@@ -71,9 +71,9 @@ QWidget. Both preview paths use CPU decoding. Project persistence, editing and l
 | Fedora 44 AppImage, hosted | Debian-built AppImage relocated under a Unicode path and ran under Weston 15 inside a Fedora 44 container with its own media tools. Both codec fixtures passed using forced software and OpenGL llvmpipe (Mesa 26.2.7, LLVM 22.1.8). The test used extract-and-run. |
 | Windows x86-64 ZIP, hosted | Native Windows Server 2025, MSYS2 UCRT64, Qt 6.12.0, GCC 16.2.0, libmpv API 2.6 and FFmpeg 9.1. Both CTest modes passed. Auto selected software after Qt was unable to create an OpenGL widget context. The relocated package generated an AVC/AAC clip using bundled FFmpeg and used the bundled ffprobe and Qt plugin with only the Windows system directories on PATH. |
 
-The hosted audio tests use a timed null output. Physical audio output,
-accelerated graphics, Fedora KDE's compositor and desktop integration,
-Windows 11's shell and multi-monitor DPI still require maintainer testing.
+The hosted audio tests use a timed null output. See the maintainer tests
+below for Fedora KDE Wayland and Windows 11 playback and desktop integration.
+Accelerated OpenGL on Windows and multi-monitor DPI remain open.
 
 Four prototype issues were fixed before the gate. A stale libmpv
 end event could abort a newer load. The native Windows CMake build received
@@ -136,7 +136,7 @@ scope. Milestones C through E await maintainer approval.
 | Desktop integration | Window controls worked. The taskbar showed a generic W icon. Open media used the generic Qt file picker. | Explorer and taskbar icons looked correct. Open media used the native Windows picker. |
 | Comparison with GTK | The prototype felt faster and looked worse. | The prototype felt faster and looked worse. |
 
-The Windows stall blocks prototype approval. The earlier hosted Windows run
+The Windows stall initially blocked prototype approval. The earlier hosted Windows run
 could reach the fallback timer when Qt failed to create its OpenGL context.
 A driver that blocks while creating the widget can prevent the timer from
 running. That is a plausible cause of the white window, and the observation
@@ -154,9 +154,8 @@ libmpv's end-of-file event to the next visible frame fell from 318 ms to
 audio device. It excludes audio-device drain and waits before the event.
 Retest the join with the original footage on KDE to check the reported pause.
 
-The approval gate stays open pending playback on the Windows 11 system and
-a check of the launcher, picker and join on Fedora. Visual polish remains
-part of the desktop evaluation.
+The follow-up retest covered Windows 11 playback, plus the launcher, picker
+and join on Fedora. Visual polish remains part of the desktop evaluation.
 
 ### Follow-up test builds
 
@@ -167,3 +166,17 @@ default and explicit OpenGL modes. The relocated Windows ZIP opened AVC
 and 4K HEVC Main 10 with AAC using the software default and only the system
 PATH. The hosted audio tests use libmpv's null output.
 [Follow-up builds and evidence](https://github.com/bugrakoc/SpoolCut/actions/runs/45587125568)
+
+### Maintainer retest on 25 November 2026
+
+The maintainer tested the follow-up builds from commit
+[`996acbe`](https://github.com/bugrakoc/SpoolCut/tree/996acbe69e382a18be071064e8f4fe949954960b).
+
+| Platform | Result |
+| --- | --- |
+| Fedora KDE Wayland | Icons and the KDE file picker displayed correctly. Playback across joins was considerably faster. The maintainer reported the improvement qualitatively. |
+| Windows 11 VM | The prototype started with software preview and worked correctly. The reported opening stall cleared with this configuration. |
+
+The reported playback and desktop integration blockers are cleared on the
+tested configurations. Accelerated Windows OpenGL and multi-monitor DPI
+remain open. The lossless core port awaits an explicit go/no-go.
