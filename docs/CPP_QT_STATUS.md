@@ -148,10 +148,22 @@ now covers 4K HEVC Main 10 plus AAC with the development PATH removed. The
 Fedora AppImage installs a launcher with its own app ID and bundles Qt's
 XDG Desktop Portal plugin for KDE file dialogs. Preview loading now supplies
 the start position with the load command, avoiding a second seek at joins.
-The regression test measures from libmpv's end-of-file event to the next
-visible frame. That interval excludes audio-device drain and waits before
-the event. Retest the join with the same footage to check the reported pause.
+In six local offscreen software-rendered joins per build, the median from
+libmpv's end-of-file event to the next visible frame fell from 318 ms to
+85 ms. The test used generated 320×180 AVC and HEVC clips and a null
+audio device. It excludes audio-device drain and waits before the event.
+Retest the join with the original footage on KDE to check the reported pause.
 
 The approval gate stays open pending playback on the Windows 11 system and
 a check of the launcher, picker and join on Fedora. Visual polish remains
 part of the desktop evaluation.
+
+### Follow-up test builds
+
+Hosted Linux lifecycle, fallback and sanitizer tests passed. The relocated
+Fedora AppImage loaded the portal theme, registered a valid desktop entry
+and previewed both fixtures. Native Windows tests passed in forced software,
+default and explicit OpenGL modes. The relocated Windows ZIP opened AVC
+and 4K HEVC Main 10 with AAC using the software default and only the system
+PATH. The hosted audio tests use libmpv's null output.
+[Follow-up builds and evidence](https://github.com/bugrakoc/SpoolCut/actions/runs/45587125568)
