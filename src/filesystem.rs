@@ -81,14 +81,19 @@ pub(crate) fn publish(staged: &Path, output: &Path) -> io::Result<()> {
     use std::os::windows::ffi::OsStrExt;
     use windows_sys::Win32::Storage::FileSystem::MoveFileExW;
 
-    let wide = |path: &Path| {
-        path.as_os_str()
-            .encode_wide()
-            .chain([0])
-            .collect::<Vec<_>>()
+    let wide = |path: &Path| -> io::Result<Vec<u16>> {
+        let mut units: Vec<_> = path.as_os_str().encode_wide().collect();
+        if units.contains(&0) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "path contains a NUL",
+            ));
+        }
+        units.push(0);
+        Ok(units)
     };
-    let staged = wide(staged);
-    let output = wide(output);
+    let staged = wide(staged)?;
+    let output = wide(output)?;
     // The caller stages on the destination volume. No copy or replacement flags:
     // even an existing destination created concurrently must retain its contents.
     // SAFETY: Both path buffers are null-terminated and live through the call.
@@ -102,6 +107,21 @@ pub(crate) fn publish(staged: &Path, output: &Path) -> io::Result<()> {
 mod tests {
     use super::*;
     use std::{fs, fs::FileTimes};
+
+    #[cfg(windows)]
+    #[test]
+    fn publication_rejects_a_path_with_nul() {
+        let directory = tempfile::tempdir().unwrap();
+        let original = directory.path().join("original");
+        fs::write(&original, b"data").unwrap();
+        let target = directory.path().join("truncated\0suffix");
+        assert_eq!(
+            publish(&original, &target).unwrap_err().kind(),
+            io::ErrorKind::InvalidInput
+        );
+        assert!(original.is_file());
+        assert!(!directory.path().join("truncated").exists());
+    }
 
     #[test]
     fn identifies_a_replacement_with_the_same_size_and_time() {
