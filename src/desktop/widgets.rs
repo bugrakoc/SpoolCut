@@ -1,10 +1,8 @@
-use gtk::prelude::*;
 #[cfg(not(windows))]
-use gtk::{cairo, gdk, glib};
+use gtk::cairo;
+use gtk::{gdk, glib, prelude::*};
 
-#[cfg(not(windows))]
-use crate::APP_ICON;
-use crate::{APPLICATION_ID, timeline::Timeline};
+use crate::{APP_ICON, APPLICATION_ID, timeline::Timeline};
 
 pub struct Widgets {
     pub window: gtk::ApplicationWindow,
@@ -46,6 +44,14 @@ impl Widgets {
             .default_width(1120)
             .default_height(760)
             .build();
+        let icon_texture = gdk::Texture::from_bytes(&glib::Bytes::from_static(APP_ICON))
+            .expect("the embedded SpoolCut icon is a valid PNG");
+        let window_icon = icon_texture.clone();
+        window.connect_realize(move |window| {
+            if let Some(toplevel) = window.surface().and_downcast::<gdk::Toplevel>() {
+                toplevel.set_icon_list(std::slice::from_ref(&window_icon));
+            }
+        });
         let dark = gtk::Settings::default()
             .is_some_and(|settings| settings.is_gtk_application_prefer_dark_theme());
         let provider = gtk::CssProvider::new();
@@ -65,7 +71,7 @@ impl Widgets {
         let header = gtk::HeaderBar::new();
         header.set_show_title_buttons(false);
         #[cfg(not(windows))]
-        header.set_title_widget(Some(&window_title(&window)));
+        header.set_title_widget(Some(&window_title(&window, &icon_texture)));
         header.pack_start(&new);
         header.pack_start(&open);
         header.pack_start(&save);
@@ -275,16 +281,9 @@ enum WindowControl {
 }
 
 #[cfg(not(windows))]
-fn window_title(window: &gtk::ApplicationWindow) -> gtk::Box {
-    let texture = gdk::Texture::from_bytes(&glib::Bytes::from_static(APP_ICON))
-        .expect("the embedded SpoolCut icon is a valid PNG");
-    let icon = gtk::Image::from_paintable(Some(&texture));
+fn window_title(window: &gtk::ApplicationWindow, texture: &gdk::Texture) -> gtk::Box {
+    let icon = gtk::Image::from_paintable(Some(texture));
     icon.set_pixel_size(26);
-    window.connect_realize(move |window| {
-        if let Some(toplevel) = window.surface().and_downcast::<gdk::Toplevel>() {
-            toplevel.set_icon_list(std::slice::from_ref(&texture));
-        }
-    });
     let label = gtk::Label::builder()
         .ellipsize(gtk::pango::EllipsizeMode::End)
         .build();

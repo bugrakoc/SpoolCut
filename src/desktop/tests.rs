@@ -131,9 +131,14 @@ fn desktop_edit_preview_persist_export() {
     wait_for("the preview to initialize", || {
         app.preview.borrow().is_some()
     });
+    let software = app.preview.borrow().as_ref().unwrap().is_software();
+    eprintln!(
+        "Preview renderer: {}",
+        if software { "software" } else { "OpenGL" }
+    );
     if std::env::var_os("SPOOLCUT_REQUIRE_OPENGL").is_some() {
         assert!(
-            !app.preview.borrow().as_ref().unwrap().is_software(),
+            !software,
             "OpenGL was required, but the editor fell back to software"
         );
     }

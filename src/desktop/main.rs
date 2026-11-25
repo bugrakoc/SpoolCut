@@ -32,7 +32,6 @@ use timeline::{ClipVisual, Draft, Edge, Hit};
 use widgets::{Widgets, seconds};
 
 const APPLICATION_ID: &str = "io.github.bugrakoc.SpoolCut";
-#[cfg(not(windows))]
 const APP_ICON: &[u8] = include_bytes!("../../assets/io.github.bugrakoc.SpoolCut.png");
 
 #[derive(Default)]
