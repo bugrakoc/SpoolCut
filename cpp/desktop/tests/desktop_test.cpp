@@ -1,9 +1,13 @@
 #include "appimage_launcher.h"
 #include "preview.h"
+#include "system_info.h"
 #include "timeline.h"
 #include "window.h"
 
 #include <QAction>
+#include <QClipboard>
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
@@ -12,7 +16,11 @@
 #include <QOpenGLWidget>
 #include <QListWidget>
 #include <QPlatformSurfaceEvent>
+#include <QMenuBar>
+#include <QPlainTextEdit>
 #include <QProcess>
+#include <QPushButton>
+#include <QSysInfo>
 #include <QSignalSpy>
 #include <QStandardPaths>
 #include <QTemporaryDir>
@@ -65,6 +73,92 @@ class DesktopTest final : public QObject {
     Q_OBJECT
 
 private slots:
+    void systemInformationFormat()
+    {
+        SystemInformation info;
+        info.version = SPOOLCUT_VERSION;
+        info.cpu = "AMD Ryzen 7 7700X 8-Core Processor";
+        info.gpus = {"NVIDIA GeForce RTX 4070 Ti", "NVIDIA GeForce RTX 4070 Ti",
+                     "Navi 32 [Radeon RX 7700 XT / 7800 XT]", "/home/alice/private.mp4",
+                     "alice@example.test", "192.168.1.8", "fe80::1",
+                     "01:23:45:67:89:ab", "550e8400-e29b-41d4-a716-446655440000"};
+        info.drivers = {"NVIDIA 32.0.15.7223", "C:\\Users\\Alice\\driver.dll"};
+        info.glVersion = "4.5 (Core Profile) Mesa 24.3.4";
+        info.mpv = "0.40.0\nUSERNAME=alice";
+        const auto report = info.report();
+        QVERIFY(report.startsWith("### Application\n- SpoolCut version: " SPOOLCUT_VERSION));
+        QVERIFY(report.contains("- CPU model: AMD Ryzen 7 7700X 8-Core Processor\n"));
+        QCOMPARE(report.count("NVIDIA GeForce RTX 4070 Ti"), 1);
+        QVERIFY(report.contains("Radeon RX 7700 XT / 7800 XT"));
+        QVERIFY(report.contains("- Graphics driver: NVIDIA 32.0.15.7223"));
+        QVERIFY(report.contains("- OpenGL version: 4.5 (Core Profile) Mesa 24.3.4\n"));
+        QVERIFY(report.contains("- libmpv version: Unknown or unavailable"));
+        QVERIFY(report.contains("- RAM (OS-reported): Unknown or unavailable"));
+        for (const auto *personal : {"alice", "Alice", "192.168", "fe80", "01:23", "550e8400", "private.mp4"})
+            QVERIFY2(!report.contains(QLatin1String(personal)), personal);
+        QCOMPARE(mediaToolVersion("ffmpeg version 7.1.5-0+deb13u1 Copyright (c)\n", "ffmpeg"),
+                 QString("7.1.5-0+deb13u1"));
+        QCOMPARE(mediaToolVersion("ffprobe version N-117037-g12345\r\n", "ffprobe"),
+                 QString("N-117037-g12345"));
+        QVERIFY(mediaToolVersion("ffprobe version /home/alice/bin/ffprobe", "ffprobe").isEmpty());
+        QVERIFY(mediaToolVersion("ffprobe version 7.1.5", "ffmpeg").isEmpty());
+        QVERIFY(mediaToolVersion("ffprobe version ", "ffprobe").isEmpty());
+    }
+
+    void systemInformationDialog()
+    {
+        QCoreApplication::setApplicationVersion(SPOOLCUT_VERSION);
+        QProcess cli;
+        cli.start(QStringLiteral(SPOOLCUT_CLI), {"--version"});
+        QVERIFY(cli.waitForFinished());
+        QCOMPARE(cli.readAllStandardOutput().trimmed(), QByteArray("SpoolCut " SPOOLCUT_VERSION));
+
+        Window window;
+        window.show();
+        QAction *information = nullptr;
+        for (auto *action : window.menuBar()->findChildren<QAction *>()) {
+            if (action->text() == "&System Information")
+                information = action;
+        }
+        QVERIFY(information);
+        QGuiApplication::clipboard()->setText("clipboard sentinel");
+        information->trigger();
+        auto *dialog = window.findChild<QDialog *>();
+        QVERIFY(dialog);
+        auto *report = dialog->findChild<QPlainTextEdit *>();
+        auto *buttons = dialog->findChild<QDialogButtonBox *>();
+        QVERIFY(report && buttons);
+        QPushButton *copy = nullptr;
+        for (auto *button : buttons->findChildren<QPushButton *>()) {
+            if (button->text() == "Copy Information")
+                copy = button;
+        }
+        QVERIFY(copy);
+        QVERIFY(report->isReadOnly());
+        QVERIFY(!copy->isEnabled());
+        QTRY_VERIFY_WITH_TIMEOUT(copy->isEnabled(), 8000);
+        const auto text = report->toPlainText();
+        QVERIFY(text.contains("- SpoolCut version: " SPOOLCUT_VERSION "\n"));
+        if (!QStringLiteral(SPOOLCUT_BUILD_REVISION).isEmpty())
+            QVERIFY(text.contains("- Build revision: " SPOOLCUT_BUILD_REVISION "\n"));
+        QVERIFY(text.contains("- Build architecture: " + QSysInfo::buildCpuArchitecture()));
+        QVERIFY(text.contains("- Qt version: " + QString::fromLatin1(qVersion())));
+#ifdef Q_OS_WIN
+        QVERIFY(text.contains("- OS and version: Windows"));
+#elif defined(Q_OS_LINUX)
+        QVERIFY(text.contains("- OS and version: Linux "));
+#endif
+        for (const auto *tool : {"libmpv", "FFmpeg", "FFprobe"}) {
+            const auto label = QString("- %1 version: ").arg(QLatin1String(tool));
+            QVERIFY(text.contains(label));
+            QVERIFY2(!text.contains(label + "Unknown"), qPrintable(text));
+        }
+        QCOMPARE(QGuiApplication::clipboard()->text(), QString("clipboard sentinel"));
+        copy->click();
+        QCOMPARE(QGuiApplication::clipboard()->text(), text);
+        dialog->reject();
+    }
+
     void proportionalTimeline() {
         Timeline timeline;
         timeline.resize(824, 180);
@@ -433,6 +527,15 @@ private slots:
                 QVERIFY(window.preview()->findChild<QOpenGLWidget *>() == nullptr);
             }
 #endif
+            if (renderer.startsWith("OpenGL")) {
+                QCOMPARE(window.preview()->activeRenderer(), QString("OpenGL"));
+                QVERIFY(!window.preview()->openGlRenderer().isEmpty());
+                QVERIFY(!window.preview()->openGlVersion().isEmpty());
+            } else {
+                QCOMPARE(window.preview()->activeRenderer(), QString("Software"));
+                QVERIFY(window.preview()->openGlRenderer().isEmpty());
+                QVERIFY(window.preview()->openGlVersion().isEmpty());
+            }
             if (qEnvironmentVariableIsSet("SPOOLCUT_QT_REQUIRE_OPENGL")
                 && qEnvironmentVariable("SPOOLCUT_QT_PREVIEW") != "software")
                 QVERIFY2(renderer.startsWith("OpenGL"), qPrintable(renderer));
