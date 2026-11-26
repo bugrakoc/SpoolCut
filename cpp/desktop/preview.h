@@ -18,6 +18,9 @@ public:
     void setPlaying(bool playing);
     void stop(bool missingMedia = false);
     QString renderer() const;
+    QString activeRenderer() const;
+    QString openGlRenderer() const { return openGlRenderer_; }
+    QString openGlVersion() const { return openGlVersion_; }
     double position() const { return position_; }
 
 signals:
@@ -31,7 +34,7 @@ signals:
 private:
     void installSurface(bool software);
     void fallback(const QString &reason);
-    void handleRenderer(const QString &renderer);
+    void handleRenderer(const QString &renderer, const QString &glRenderer, const QString &glVersion);
     void handleFailure(const QString &reason);
 
     QStackedLayout *layout_;
@@ -41,6 +44,8 @@ private:
     QTimer fallbackTimer_;
     QString path_;
     QString renderer_;
+    QString openGlRenderer_;
+    QString openGlVersion_;
     QString fallbackReason_;
     double position_ = 0;
     std::optional<double> end_;

@@ -1,0 +1,15 @@
+name: Feature request
+description: Suggest a specific improvement and describe the editing workflow it would help.
+body:
+  - type: textarea
+    id: use-case
+    attributes:
+      label: What are you trying to do?
+      description: Describe your workflow and where you get stuck.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What behavior would help?
+      description: Optional. Mention any workaround or related request.

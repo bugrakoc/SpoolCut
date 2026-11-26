@@ -126,7 +126,9 @@ public:
         requested_.reset();
         loaded_ = false;
         ++sourceVersion_;
-        if (render_)
+        // An asynchronous stop can discard a load queued before it has
+        // started. Let that load finish so the latest request can replace it.
+        if (render_ && !loading_)
             send(0, {"stop"});
     }
 
@@ -148,7 +150,7 @@ signals:
     void audioChanged(const QString &parameters);
     void mediaFailed(const QString &reason);
     void rendererFailed(const QString &reason);
-    void rendererReady(const QString &renderer);
+    void rendererReady(const QString &renderer, const QString &glRenderer, const QString &glVersion);
     void ended();
 
 private:
@@ -203,7 +205,9 @@ private:
     void finishLoad(const QString &error) {
         loading_ = false;
         if (loadingVersion_ != sourceVersion_) {
-            if (!path_.isEmpty())
+            if (path_.isEmpty())
+                send(0, {"stop"});
+            else
                 load();
             return;
         }
@@ -286,7 +290,7 @@ public:
         };
         const auto error = surface_.initialize(args);
         if (error.isEmpty())
-            emit surface_.rendererReady("Software");
+            emit surface_.rendererReady("Software", {}, {});
         else
             emit surface_.rendererFailed(error);
     }
@@ -391,10 +395,15 @@ private:
             emit surface_.rendererFailed(error);
             return;
         }
-        const auto *name = context()->functions()->glGetString(GL_RENDERER);
-        const QString driver = name ? QString::fromLatin1(reinterpret_cast<const char *>(name))
-                                    : tr("unknown driver");
-        emit surface_.rendererReady(QStringLiteral("OpenGL (%1)").arg(driver));
+        auto *gl = context()->functions();
+        const auto glString = [gl](GLenum field) {
+            return QString::fromLatin1(reinterpret_cast<const char *>(gl->glGetString(field)));
+        };
+        const auto renderer = glString(GL_RENDERER);
+        const auto version = glString(GL_VERSION);
+        emit surface_.rendererReady(
+            QStringLiteral("OpenGL (%1)").arg(renderer.isEmpty() ? tr("unknown driver") : renderer),
+            renderer, version);
     }
 
     void drawFrame(QOpenGLFunctions *gl) {
@@ -511,9 +520,11 @@ void Preview::fallback(const QString &reason) {
     installSurface(true);
 }
 
-void Preview::handleRenderer(const QString &renderer) {
+void Preview::handleRenderer(const QString &renderer, const QString &glRenderer, const QString &glVersion) {
     fallbackTimer_.stop();
     renderer_ = renderer;
+    openGlRenderer_ = glRenderer;
+    openGlVersion_ = glVersion;
     setToolTip(fallbackReason_.isEmpty() ? renderer
                                         : tr("%1 — OpenGL fallback: %2").arg(renderer, fallbackReason_));
     emit rendererChanged(toolTip());
@@ -528,6 +539,12 @@ void Preview::handleFailure(const QString &reason) {
 }
 
 QString Preview::renderer() const { return renderer_; }
+
+QString Preview::activeRenderer() const {
+    if (!surface_ || !surface_->ready() || renderer_.isEmpty())
+        return {};
+    return software_ ? QStringLiteral("Software") : QStringLiteral("OpenGL");
+}
 
 void Preview::open(const QString &path, double seconds, bool playing, std::optional<double> end) {
     path_ = path;

@@ -1,0 +1,32 @@
+name: Bug report
+description: Report a reproducible problem with SpoolCut.
+body:
+  - type: input
+    id: version
+    attributes:
+      label: SpoolCut version
+      placeholder: 0.4.0-rc.1
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include the shortest sequence you can and the footage characteristics when relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: What happened and what did you expect?
+      description: Include any exact error message with private details removed.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: System Information and package
+      description: Optional. Paste Help → System Information → Copy Information and say how you installed SpoolCut.
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Additional evidence
+      description: Optional. Remove private paths and names from logs or project files, and share only media you have permission to upload.

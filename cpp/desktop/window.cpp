@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "window.h"
 #include "preview.h"
+#include "system_info.h"
 #include "timeline.h"
 
 #include <QAction>
 #include <QCloseEvent>
 #include <QCoreApplication>
+#include <QDesktopServices>
 #include <QDir>
 #include <QDragEnterEvent>
 #include <QFileDialog>
@@ -243,6 +245,23 @@ Window::Window()
     auto *fit = view->addAction(tr("Fit timeline"), this, [this] { timeline_->fit(); });
 
     auto *help = menuBar()->addMenu(tr("&Help"));
+    const auto repository = QStringLiteral("https://github.com/bugrakoc/SpoolCut");
+    const auto helpLink = [this, help, &repository](const QString &label, const QString &path) {
+        help->addAction(label, this, [this, url = QUrl(repository + path)] {
+            if (!QDesktopServices::openUrl(url))
+                QMessageBox::warning(this, tr("Open link"), tr("Could not open the default browser."));
+        });
+    };
+    helpLink(tr("&Documentation"), QStringLiteral("#readme"));
+    help->addAction(tr("&System Information"), this, [this] { showSystemInformation(this, preview_); });
+    help->addSeparator();
+    helpLink(tr("Report a &Bug"), QStringLiteral("/issues/new/choose"));
+    const auto revision = QStringLiteral(SPOOLCUT_BUILD_REVISION);
+    const auto docsRef = revision.isEmpty() ? QStringLiteral("main") : revision;
+    helpLink(tr("Submit a &Compatibility Report"),
+             QStringLiteral("/blob/%1/docs/TESTING.md#submit-a-compatibility-report").arg(docsRef));
+    helpLink(tr("&GitHub Repository"), {});
+    help->addSeparator();
     help->addAction(tr("&About SpoolCut"), this, [this] {
         QMessageBox::about(this, tr("About SpoolCut"),
                            tr("SpoolCut %1").arg(QCoreApplication::applicationVersion()));
@@ -751,11 +770,13 @@ void Window::refresh()
     }
     timeline_->setClips(std::move(clips), timingProblem);
     timeline_->setSelected(selected_);
-    preview_->stop(missingMedia);
-    if (!segments_.empty())
+    if (!segments_.empty() && !cancel_) {
         seek(positionUs_, false);
-    else if (clipCount() == 0)
-        positionUs_ = 0;
+    } else {
+        preview_->stop(missingMedia);
+        if (clipCount() == 0)
+            positionUs_ = 0;
+    }
     controls();
 }
 
