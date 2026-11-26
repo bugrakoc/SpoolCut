@@ -43,7 +43,7 @@ collect_alpine_source() (
 collect_alpine_source main/musl 8999cf56154b9bd09c995f293d8dfd3aa8001e3a 1.2.5-r11 \
     https://distfiles.alpinelinux.org/distfiles/v3.21/musl-1.2.5.tar.gz
 collect_alpine_source main/zlib c973d294927355eac1d2a6e97d86e41fbab8ffda 1.3.2-r1 \
-    https://zlib.net/fossils/zlib-1.3.2.tar.gz
+    https://github.com/madler/zlib/releases/download/v1.3.2/zlib-1.3.2.tar.gz
 collect_alpine_source main/zstd 5c2ddf18f193dafdd25ae7391d96c7e30766eecd 1.5.6-r2 \
     https://codeload.github.com/facebook/zstd/tar.gz/refs/tags/v1.5.6
 collect_alpine_source community/mimalloc2 5a1a5dc3216a69e3cd66a57ee07cb5ef01b8be39 2.1.7-r0 \
