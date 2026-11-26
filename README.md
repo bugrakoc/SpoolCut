@@ -2,29 +2,44 @@
 
 <img src="assets/io.github.bugrakoc.SpoolCut.png" alt="SpoolCut icon" width="96" height="96">
 
-SpoolCut cuts and joins compatible video without re-encoding. The Qt Widgets
-editor and the command-line tool share a C++20 stream-copy library.
+SpoolCut is a free, open-source desktop editor for trimming and joining
+compatible video. It copies the compressed video and audio from your
+recordings, so export avoids re-encoding time and generation loss.
+SpoolCut focuses on a single, gapless timeline with keyframe-aligned cuts.
+Effects, transitions and multitrack compositing are outside that workflow.
 
-## Run SpoolCut
+> **Help test SpoolCut 0.4.x.** A five-minute run with two short clips helps
+> us check more hardware and recording formats. Successful and partial
+> results are welcome. See the [testing guide](docs/TESTING.md) and
+> [compatibility matrix](docs/COMPATIBILITY.md).
 
-Download [SpoolCut 0.3.0](https://github.com/bugrakoc/SpoolCut/releases/tag/v0.3.0) as an AppImage
-for Fedora 44 x86-64 or a portable ZIP for Windows 11 x86-64.
-The packages include Qt, libmpv, FFmpeg and ffprobe.
+## Download and run
+
+Get an AppImage for Fedora 44 x86-64 or a portable ZIP for Windows 11
+x86-64 from [GitHub Releases](https://github.com/bugrakoc/SpoolCut/releases).
+Use the 0.4.x candidate for public testing when its packages are available.
+The packages include Qt, libmpv, FFmpeg and FFprobe. Other Linux
+distributions are welcome to test the AppImage or build from source.
 
 - **Fedora.** Make the AppImage executable and open it. It adds a SpoolCut
-  application launcher on first run. If you move the AppImage, run it from
-  its new location to update the launcher. Use `--appimage-extract-and-run`
-  if FUSE is unavailable.
+  application launcher on first run. If you move it, run it from the new
+  location to update the launcher. Use `--appimage-extract-and-run` if
+  FUSE is unavailable.
 - **Windows.** Extract the ZIP and open `SpoolCut/bin/SpoolCut.exe`. Keep
-  the contents of `bin` together. See the [Windows guide](docs/WINDOWS.md)
-  for native builds and renderer settings.
+  the contents of `bin` together. See the [Windows guide](docs/WINDOWS.md).
 
-Fedora uses OpenGL by default and supports a software fallback. Run
-`SPOOLCUT_QT_PREVIEW=software ./SpoolCut-0.3.0-Fedora-x86_64.AppImage` to
-select software explicitly. Windows defaults to software. Set
-`SPOOLCUT_QT_PREVIEW=opengl` to try OpenGL on Windows. The preview tooltip
-reports the active renderer and any fallback. Both renderers decode footage
-on the CPU.
+Linux defaults to OpenGL with a software fallback. To force software,
+run your downloaded AppImage with `SPOOLCUT_QT_PREVIEW=software`. For
+example, with the 0.4.0 candidate:
+
+```sh
+SPOOLCUT_QT_PREVIEW=software ./SpoolCut-0.4.0-rc.1-Fedora-x86_64.AppImage
+```
+
+Windows defaults to software preview. The [Windows guide](docs/WINDOWS.md#portable-package)
+shows how to opt into OpenGL. Both modes decode footage on the CPU.
+The preview tooltip and **Help → System Information** show the active
+renderer after you play a clip.
 
 ## Edit and export
 
@@ -66,8 +81,8 @@ on the CPU.
 
 ## Command line
 
-Use `spoolcut` from a CMake build, `./SpoolCut-0.3.0-Fedora-x86_64.AppImage --cli`
-on Fedora, or `SpoolCut/bin/spoolcut-cli.exe` on Windows.
+Use `spoolcut` from a CMake build, launch the AppImage with `--cli` on
+Fedora, or run `SpoolCut/bin/spoolcut-cli.exe` on Windows.
 
 ```sh
 spoolcut inspect camera-a.mp4
@@ -119,6 +134,17 @@ Run the desktop tests under a graphical session, Xvfb, or Weston. Use
 with the pinned [Rust/GTK reference](https://github.com/bugrakoc/SpoolCut/tree/39cb4eecef8914f187871aac2187f8f023d14e0d).
 See the [migration evidence](docs/CPP_QT_STATUS.md) for automated and
 maintainer results.
+
+## Reports and privacy
+
+Share successful, partial or unsuccessful compatibility results through
+the [testing guide](docs/TESTING.md#submit-a-compatibility-report).
+File reproducible problems in [GitHub Issues](https://github.com/bugrakoc/SpoolCut/issues/new/choose).
+The [contributor guide](CONTRIBUTING.md) explains what helps a report.
+
+SpoolCut has no automatic telemetry. **Help → System Information** reads
+local diagnostic details you can copy and share voluntarily. See the
+[privacy practices](docs/PRIVACY.md).
 
 ## License and sources
 
