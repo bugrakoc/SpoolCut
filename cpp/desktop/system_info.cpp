@@ -134,11 +134,13 @@ void showSystemInformation(QWidget *parent, Preview *preview)
         collected->session = displaySession();
         const auto updateReport = [collected, report, preview] {
             collected->renderer = preview->activeRenderer();
-            collected->glRenderer = preview->openGlRenderer();
-            collected->glVersion = preview->openGlVersion();
+            const bool openGl = collected->renderer == u"OpenGL"_s;
+            collected->glRenderer = openGl ? preview->openGlRenderer() : QString{};
+            collected->glVersion = openGl ? preview->openGlVersion() : QString{};
             report->setPlainText(collected->report());
         };
         QObject::connect(preview, &Preview::rendererChanged, report, updateReport);
+        QObject::connect(preview, &Preview::failed, report, updateReport);
         updateReport();
         copy->setEnabled(true);
     });

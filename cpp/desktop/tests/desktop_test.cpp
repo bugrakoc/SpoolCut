@@ -199,6 +199,43 @@ private slots:
         QCOMPARE(trimmed[0][2].toDouble(), 1);
     }
 
+    void editingKeepsPreviewResponsive()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const auto first = makeMedia(directory, "wide.mp4", "red");
+        const auto second = makeMedia(directory, "close.mp4", "blue");
+        QVERIFY(!first.isEmpty() && !second.isEmpty());
+        Window window;
+        QSignalSpy frames(window.preview(), &Preview::frameDrawn);
+        QSignalSpy failures(&window, &Window::problem);
+        window.show();
+        window.importFiles({first, second}, true);
+        QTRY_COMPARE_WITH_TIMEOUT(window.clipCount(), size_t{2}, 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(!frames.isEmpty(), 5000);
+
+        auto *timeline = window.timeline();
+        timeline->fit();
+        QTest::mousePress(timeline, Qt::LeftButton, Qt::NoModifier, QPoint(timeline->xAt(0.02), 66));
+        QTest::mouseRelease(timeline, Qt::LeftButton, Qt::NoModifier, QPoint(timeline->xAt(1.0), 66));
+        QCOMPARE(timeline->duration(), 7.0);
+        window.scrub(2.0);
+        QAction *split = nullptr;
+        for (auto *action : window.menuBar()->findChildren<QAction *>()) {
+            if (action->text() == "&Split at playhead")
+                split = action;
+        }
+        QVERIFY(split && split->isEnabled());
+        split->trigger();
+        QCOMPARE(window.clipCount(), size_t{3});
+        frames.clear();
+        window.scrub(3.3);
+        window.togglePlayback();
+        QTRY_VERIFY_WITH_TIMEOUT(!frames.isEmpty(), 5000);
+        QTRY_VERIFY_WITH_TIMEOUT(window.preview()->position() > 0.8, 5000);
+        QCOMPARE(failures.size(), 0);
+    }
+
     void projectEditingAndExport()
     {
         using spoolcut::Project;

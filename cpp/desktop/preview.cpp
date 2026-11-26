@@ -126,7 +126,9 @@ public:
         requested_.reset();
         loaded_ = false;
         ++sourceVersion_;
-        if (render_)
+        // An asynchronous stop can discard a load queued before it has
+        // started. Let that load finish so the latest request can replace it.
+        if (render_ && !loading_)
             send(0, {"stop"});
     }
 
@@ -203,7 +205,9 @@ private:
     void finishLoad(const QString &error) {
         loading_ = false;
         if (loadingVersion_ != sourceVersion_) {
-            if (!path_.isEmpty())
+            if (path_.isEmpty())
+                send(0, {"stop"});
+            else
                 load();
             return;
         }
@@ -537,7 +541,7 @@ void Preview::handleFailure(const QString &reason) {
 QString Preview::renderer() const { return renderer_; }
 
 QString Preview::activeRenderer() const {
-    if (renderer_.isEmpty())
+    if (!surface_ || !surface_->ready() || renderer_.isEmpty())
         return {};
     return software_ ? QStringLiteral("Software") : QStringLiteral("OpenGL");
 }

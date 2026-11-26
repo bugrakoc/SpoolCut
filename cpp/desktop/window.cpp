@@ -770,11 +770,13 @@ void Window::refresh()
     }
     timeline_->setClips(std::move(clips), timingProblem);
     timeline_->setSelected(selected_);
-    preview_->stop(missingMedia);
-    if (!segments_.empty())
+    if (!segments_.empty() && !cancel_) {
         seek(positionUs_, false);
-    else if (clipCount() == 0)
-        positionUs_ = 0;
+    } else {
+        preview_->stop(missingMedia);
+        if (clipCount() == 0)
+            positionUs_ = 0;
+    }
     controls();
 }
 
