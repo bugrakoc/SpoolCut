@@ -29,7 +29,8 @@ QString reportValue(QString value)
         uR"((?:^|\s)[^\s]*@[^\s]*\.[^\s]+|(?<! )/|/(?! )|(?<![\d.])(?:[0-9]{1,3}\.){3}[0-9]{1,3}(?![\d.])|(?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2}|(?:[0-9a-f]{0,4}:){2,}[0-9a-f]{0,4}|[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12})"_s,
         QRegularExpression::CaseInsensitiveOption);
     value = value.trimmed();
-    if (!label.match(value).hasMatch() || sensitive.match(value).hasMatch())
+    const auto checked = QString(value).replace(u"GNU/Linux"_s, u"GNU Linux"_s);
+    if (!label.match(value).hasMatch() || sensitive.match(checked).hasMatch())
         return {};
     return value;
 }

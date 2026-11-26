@@ -77,6 +77,7 @@ private slots:
     {
         SystemInformation info;
         info.version = SPOOLCUT_VERSION;
+        info.distribution = "Debian GNU/Linux 13 (trixie)";
         info.cpu = "AMD Ryzen 7 7700X 8-Core Processor";
         info.gpus = {"NVIDIA GeForce RTX 4070 Ti", "NVIDIA GeForce RTX 4070 Ti",
                      "Navi 32 [Radeon RX 7700 XT / 7800 XT]", "/home/alice/private.mp4",
@@ -87,6 +88,7 @@ private slots:
         info.mpv = "0.40.0\nUSERNAME=alice";
         const auto report = info.report();
         QVERIFY(report.startsWith("### Application\n- SpoolCut version: " SPOOLCUT_VERSION));
+        QVERIFY(report.contains("- Linux distribution: Debian GNU/Linux 13 (trixie)\n"));
         QVERIFY(report.contains("- CPU model: AMD Ryzen 7 7700X 8-Core Processor\n"));
         QCOMPARE(report.count("NVIDIA GeForce RTX 4070 Ti"), 1);
         QVERIFY(report.contains("Radeon RX 7700 XT / 7800 XT"));

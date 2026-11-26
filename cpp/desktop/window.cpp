@@ -255,8 +255,11 @@ Window::Window()
     helpLink(tr("&Documentation"), QStringLiteral("#readme"));
     help->addAction(tr("&System Information"), this, [this] { showSystemInformation(this, preview_); });
     help->addSeparator();
-    helpLink(tr("Report a &Bug"), QStringLiteral("/issues/new?template=bug.yml"));
-    helpLink(tr("Submit a &Compatibility Report"), QStringLiteral("/blob/main/docs/TESTING.md#submit-a-compatibility-report"));
+    helpLink(tr("Report a &Bug"), QStringLiteral("/issues/new/choose"));
+    const auto revision = QStringLiteral(SPOOLCUT_BUILD_REVISION);
+    const auto docsRef = revision.isEmpty() ? QStringLiteral("main") : revision;
+    helpLink(tr("Submit a &Compatibility Report"),
+             QStringLiteral("/blob/%1/docs/TESTING.md#submit-a-compatibility-report").arg(docsRef));
     helpLink(tr("&GitHub Repository"), {});
     help->addSeparator();
     help->addAction(tr("&About SpoolCut"), this, [this] {

@@ -26,9 +26,9 @@ the [five-minute checklist](TESTING.md) for step-by-step instructions.
   Inspect for personal filenames, paths, user and host names, hardware
   identifiers, addresses and raw tool output. Close the dialog immediately
   after opening it once, reopen it and ensure it still collects normally.
-- [ ] Follow the Help links. Check the issue form and testing guide after
-  merging, and verify the reporting instructions lead to the pinned
-  discussion after enabling Discussions. Confirm About shows the same version.
+- [ ] Follow the Help links. Check the testing guide on the candidate
+  revision and confirm the issue form appears after merging. Verify the
+  reporting instructions lead to the pinned discussion after enabling it. Confirm About shows the same version.
 - [ ] On Fedora, repeat with `SPOOLCUT_QT_PREVIEW=software` and check for a
   stable picture with no white fade. On Windows, try OpenGL only where the
   graphics driver can provide it or record the opt-in test as skipped.

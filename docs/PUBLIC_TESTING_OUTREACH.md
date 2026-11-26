@@ -8,7 +8,9 @@ where the venue allows it. Recheck the posting rules when publishing.
 
 The [forum index](https://forum.videohelp.com/) describes **Latest Video
 News** as a category for new and updated tools. Check the
-[forum rules](https://forum.videohelp.com/faq.php) for author submissions.
+[forum rules](https://forum.videohelp.com/threads/72386-Forum-rules-Acceptable-Use-Policy-(AUP)).
+News is allowed. Get the webmaster’s permission first if the post would
+be treated as solicitation, and use one section of the forum.
 
 **SpoolCut 0.4.x, a lossless video cutter and joiner, needs test footage**
 
