@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 cmake_minimum_required(VERSION 3.25)
 include(cmake/SpoolCutVersion.cmake)
-project(SpoolCut VERSION "${SPOOLCUT_VERSION}" LANGUAGES CXX)
+project(SpoolCut VERSION "${SPOOLCUT_NUMERIC_VERSION}" LANGUAGES CXX)
 
 include(CTest)
 option(SPOOLCUT_BUILD_DESKTOP "Build the Qt Widgets editor" ON)

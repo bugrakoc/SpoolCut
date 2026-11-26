@@ -2,7 +2,8 @@
 
 Build from a clean, committed tree using the root CMake project.
 [`VERSION`](../VERSION) supplies the desktop and CLI versions, Windows
-executable metadata and archive names. The
+executable metadata and archive names. The numeric part also supplies the Windows manifest
+and numeric resource version. The
 [desktop workflow](../.github/workflows/desktop.yml) contains the
 production build commands and smoke tests. The
 [core workflow](../.github/workflows/core.yml) tests export and the
@@ -10,8 +11,8 @@ pinned reference separately.
 
 | Platform | Build environment | Binary | Corresponding source |
 | --- | --- | --- | --- |
-| Fedora 44 x86-64 | Debian Trixie x86-64 with the matching Debian source repositories enabled | `SpoolCut-0.3.0-Fedora-x86_64.AppImage` | `SpoolCut-0.3.0-Linux-sources.tar.zst` |
-| Windows 11 x86-64 | MSYS2 UCRT64 using matching installed and repository package versions | `SpoolCut-0.3.0-Windows-x86_64.zip` | `SpoolCut-0.3.0-Windows-sources.tar.zst` |
+| Fedora 44 x86-64 | Debian Trixie x86-64 with the matching Debian source repositories enabled | `SpoolCut-0.4.0-rc.1-Fedora-x86_64.AppImage` | `SpoolCut-0.4.0-rc.1-Linux-sources.tar.zst` |
+| Windows 11 x86-64 | MSYS2 UCRT64 using matching installed and repository package versions | `SpoolCut-0.4.0-rc.1-Windows-x86_64.zip` | `SpoolCut-0.4.0-rc.1-Windows-sources.tar.zst` |
 
 Run CMake with `-DBUILD_TESTING=OFF` to build the production executables.
 On Linux add `qt6-xdgdesktopportal-platformtheme`, `squashfs-tools`,
