@@ -18,7 +18,8 @@
    compatibility reports belong in Discussions.
 
 See GitHub's [Discussions quickstart](https://docs.github.com/en/discussions/quickstart)
-and [category guide](https://docs.github.com/en/discussions/managing-discussions-for-your-community/managing-categories-for-discussions).
+the [category guide](https://docs.github.com/en/discussions/managing-discussions-for-your-community/managing-categories-for-discussions)
+and the [pinning instructions](https://docs.github.com/en/discussions/managing-discussions-for-your-community/managing-discussions#pinning-a-discussion).
 
 ## Repository description and topics
 

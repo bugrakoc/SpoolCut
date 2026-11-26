@@ -43,6 +43,14 @@ renderer after you play a clip.
 
 ## Edit and export
 
+![SpoolCut's editor with two imported sources, a trimmed and rearranged timeline, and an active preview](docs/media/spoolcut-editor.jpg)
+
+[Watch the 13-second workflow](docs/media/spoolcut-workflow.mp4) or
+[view the System Information dialog](docs/media/spoolcut-system-information.png).
+The captures show the Qt application running the 0.4.0 candidate with
+[MDN's flower sample](https://github.com/mdn/interactive-examples/blob/9991b045e1561681d3ffc66215b92f68531ec97b/live-examples/media/cc0-videos/flower.mp4),
+cropped into two compatible test clips.
+
 1. Import MP4 or MOV files. Drag a bin item to the timeline or double-click
    it to append it. Drag clip bodies to reorder them and drag their edges to
    trim. SpoolCut keeps the timeline gapless.

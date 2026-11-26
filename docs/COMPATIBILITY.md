@@ -8,13 +8,13 @@ the [five-minute guide](TESTING.md) to report a new configuration.
 ### Maintainer-tested
 
 No maintainer report for 0.4.x is recorded yet. The automated checks below
-use generated footage and are listed separately from hardware reports.
+use generated or sample footage and are listed separately from hardware reports.
 
 ### Automated verification
 
 | SpoolCut | OS and session | GPU and renderer | Package | Test scope and result |
 | --- | --- | --- | --- | --- |
-| 0.4.0-rc.1 | Pending verification | | | |
+| 0.4.0-rc.1 | Debian 13, Qt offscreen | GPU unavailable in the test environment. Software and automatic fallback. | Source build | Core and desktop CTest suites, including diagnostics, clipboard, missing-media recovery, editing and lossless export. [Candidate PR and hosted CI](https://github.com/bugrakoc/SpoolCut/pull/5) |
 
 ### Community-reported
 
